@@ -16,7 +16,10 @@ export async function buildStampZipFromBlobs(blobs: Blob[]): Promise<Blob> {
  * 01.png〜24.pngに加えて、main.png・tab.pngなど任意の名前のファイルも含めたZIPを作る。
  * `extraFiles` はファイル名をキーにしたBlobのマップ(例: `{ 'main.png': blob, 'tab.png': blob }`)。
  */
-export async function buildFullZipFromBlobs(stampBlobs: Blob[], extraFiles: Record<string, Blob>): Promise<Blob> {
+export async function buildFullZipFromBlobs(
+  stampBlobs: Blob[],
+  extraFiles: Record<string, Blob>,
+): Promise<Blob> {
   const zip = new JSZip();
   stampBlobs.forEach((blob, i) => {
     zip.file(stampFileName(i + 1), blob);

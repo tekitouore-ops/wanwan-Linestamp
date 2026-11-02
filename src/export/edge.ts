@@ -7,7 +7,12 @@ interface BfsResult {
 }
 
 /** `isSeed(p)` を満たす画素を距離0として、`maxDist` までBFSで距離と伝播元を求める。 */
-function bfsFrom(isSeed: (pixelIndex: number) => boolean, width: number, height: number, maxDist: number): BfsResult {
+function bfsFrom(
+  isSeed: (pixelIndex: number) => boolean,
+  width: number,
+  height: number,
+  maxDist: number,
+): BfsResult {
   const length = width * height;
   const dist = new Int16Array(length).fill(-1);
   const source = new Int32Array(length).fill(-1);

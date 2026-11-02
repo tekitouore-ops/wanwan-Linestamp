@@ -6,7 +6,13 @@ function createTransparentImage(width: number, height: number): ImageDataLike {
   return { width, height, data: new Uint8ClampedArray(width * height * 4) };
 }
 
-function fillOpaqueSquare(image: ImageDataLike, x: number, y: number, size: number, color: number): void {
+function fillOpaqueSquare(
+  image: ImageDataLike,
+  x: number,
+  y: number,
+  size: number,
+  color: number,
+): void {
   for (let dy = 0; dy < size; dy += 1) {
     for (let dx = 0; dx < size; dx += 1) {
       const i = ((y + dy) * image.width + (x + dx)) * 4;

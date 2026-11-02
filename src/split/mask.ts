@@ -1,5 +1,52 @@
 import type { ImageDataLike, RGB } from '../shared/types';
 
+/** 透過画像の自動判定で使う既定値。alpha < 250 を「透明に近い」とみなし、全体の20%以上あれば透過画像と判定する。 */
+export const TRANSPARENCY_DETECTION = {
+  alphaThreshold: 250,
+  ratioThreshold: 0.2,
+} as const;
+
+/**
+ * 画像全体のうち、透明に近い画素(alpha < `alphaThreshold`)の割合が `ratioThreshold` 以上なら、
+ * ChatGPTが透過PNGとして出力したとみなして `true` を返す(B-1仕様)。
+ */
+export function detectIsTransparentImage(
+  image: ImageDataLike,
+  alphaThreshold: number = TRANSPARENCY_DETECTION.alphaThreshold,
+  ratioThreshold: number = TRANSPARENCY_DETECTION.ratioThreshold,
+): boolean {
+  const { width, height, data } = image;
+  const total = width * height;
+  if (total === 0) {
+    return false;
+  }
+  let transparentCount = 0;
+  for (let p = 0; p < total; p += 1) {
+    const alpha = data[p * 4 + 3] ?? 255;
+    if (alpha < alphaThreshold) {
+      transparentCount += 1;
+    }
+  }
+  return transparentCount / total >= ratioThreshold;
+}
+
+/**
+ * アルファ値がしきい値を超える画素を前景(1)とする2値マスクを作る(透過画像モード用)。
+ * 背景色推定を行わず、画像自身のアルファチャンネルをそのまま使う。
+ */
+export function buildForegroundMaskFromAlpha(
+  image: ImageDataLike,
+  alphaThreshold: number,
+): Uint8Array {
+  const { width, height, data } = image;
+  const mask = new Uint8Array(width * height);
+  for (let p = 0; p < width * height; p += 1) {
+    const alpha = data[p * 4 + 3] ?? 255;
+    mask[p] = alpha > alphaThreshold ? 1 : 0;
+  }
+  return mask;
+}
+
 /**
  * 画像外周 `borderWidth` px幅の画素から、チャンネルごとの中央値を背景色として推定する。
  * 中央値を使うことで、外周に少し被写体がはみ出していても外れ値の影響を受けにくくする。

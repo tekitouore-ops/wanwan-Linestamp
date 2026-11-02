@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { validateDimensions, validateEmptyCells, validateFileSize, validateOverflowingCells } from './validate';
+import {
+  validateDimensions,
+  validateEmptyCells,
+  validateFileSize,
+  validateMissingSourceSheet,
+  validateOverflowingCells,
+} from './validate';
 
 describe('validateDimensions', () => {
   it('規格内のサイズでは問題なし', () => {
@@ -61,5 +67,17 @@ describe('validateOverflowingCells', () => {
     const issues = validateOverflowingCells([3]);
     expect(issues).toHaveLength(1);
     expect(issues[0]?.message).toContain('No. 4');
+  });
+});
+
+describe('validateMissingSourceSheet', () => {
+  it('採用元が見つからないスタンプがなければ問題なし', () => {
+    expect(validateMissingSourceSheet([])).toEqual([]);
+  });
+
+  it('採用元が見つからないスタンプがあれば番号を含めて警告する', () => {
+    const issues = validateMissingSourceSheet([0, 2]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.message).toContain('No. 1, 3');
   });
 });

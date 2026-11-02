@@ -28,7 +28,13 @@ describe('buildFullZipFromBlobs', () => {
 
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(await zipBlob.arrayBuffer());
-    expect(Object.keys(zip.files).sort()).toEqual(['01.png', '02.png', '03.png', 'main.png', 'tab.png']);
+    expect(Object.keys(zip.files).sort()).toEqual([
+      '01.png',
+      '02.png',
+      '03.png',
+      'main.png',
+      'tab.png',
+    ]);
   });
 });
 

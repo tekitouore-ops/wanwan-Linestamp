@@ -1,5 +1,10 @@
 import type { ImageDataLike, RGB } from '../shared/types';
-import { buildForegroundMask, estimateBackgroundColor, removeNoise } from './mask';
+import {
+  buildForegroundMask,
+  buildForegroundMaskFromAlpha,
+  estimateBackgroundColor,
+  removeNoise,
+} from './mask';
 import type {
   Rect,
   CellWarning,
@@ -252,7 +257,10 @@ function buildCleanedMask(
   params: DetectionParams,
 ): { mask: Uint8Array; backgroundColor: RGB } {
   const backgroundColor = params.backgroundColor ?? estimateBackgroundColor(image);
-  const rawMask = buildForegroundMask(image, backgroundColor, params.backgroundThreshold);
+  const rawMask =
+    params.backgroundMode === 'transparent'
+      ? buildForegroundMaskFromAlpha(image, params.alphaThreshold)
+      : buildForegroundMask(image, backgroundColor, params.backgroundThreshold);
   const minArea = Math.max(1, Math.round(image.width * image.height * params.minAreaRatio));
   const mask = removeNoise(rawMask, image.width, image.height, minArea);
   return { mask, backgroundColor };
@@ -335,8 +343,14 @@ export function detectGridEqualDivision(
 
 /** 指定した矩形内の前景画素にぴったり合わせたbboxを求める(「内容にフィット」機能用)。 */
 export function fitBoxToContent(image: ImageDataLike, region: Rect, params: DetectionParams): Rect {
-  const backgroundColor = params.backgroundColor ?? estimateBackgroundColor(image);
-  const mask = buildForegroundMask(image, backgroundColor, params.backgroundThreshold);
+  const mask =
+    params.backgroundMode === 'transparent'
+      ? buildForegroundMaskFromAlpha(image, params.alphaThreshold)
+      : buildForegroundMask(
+          image,
+          params.backgroundColor ?? estimateBackgroundColor(image),
+          params.backgroundThreshold,
+        );
   const cellRegion: CellRegion = {
     left: Math.max(0, Math.round(region.x)),
     top: Math.max(0, Math.round(region.y)),

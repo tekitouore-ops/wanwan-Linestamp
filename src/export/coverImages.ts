@@ -1,6 +1,6 @@
 import { MAIN_IMAGE_SIZE, TAB_IMAGE_SIZE } from '../shared/lineSpec';
 import type { ImageDataLike, RGB } from '../shared/types';
-import type { GlobalSettings, Rect, StampAdjust } from '../split/types';
+import type { BackgroundMode, GlobalSettings, Rect, StampAdjust } from '../split/types';
 import { renderStamp } from './renderStamp';
 
 /**
@@ -13,7 +13,11 @@ export function computeMarginForSize(globalSettings: GlobalSettings, targetWidth
   return Math.max(0, Math.round(ratio * targetWidth));
 }
 
-function settingsForSize(globalSettings: GlobalSettings, width: number, height: number): GlobalSettings {
+function settingsForSize(
+  globalSettings: GlobalSettings,
+  width: number,
+  height: number,
+): GlobalSettings {
   return {
     ...globalSettings,
     outputWidth: width,
@@ -29,9 +33,10 @@ export function renderMainImage(
   backgroundColor: RGB,
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
+  backgroundMode: BackgroundMode = 'color',
 ): ImageDataLike {
   const settings = settingsForSize(globalSettings, MAIN_IMAGE_SIZE.width, MAIN_IMAGE_SIZE.height);
-  return renderStamp(sourceImage, frame, backgroundColor, settings, adjust);
+  return renderStamp(sourceImage, frame, backgroundColor, settings, adjust, backgroundMode);
 }
 
 /** 表紙スタンプの調整結果を引き継ぎ、タブ画像(96×74)を生成する。 */
@@ -41,9 +46,10 @@ export function renderTabImage(
   backgroundColor: RGB,
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
+  backgroundMode: BackgroundMode = 'color',
 ): ImageDataLike {
   const settings = settingsForSize(globalSettings, TAB_IMAGE_SIZE.width, TAB_IMAGE_SIZE.height);
-  return renderStamp(sourceImage, frame, backgroundColor, settings, adjust);
+  return renderStamp(sourceImage, frame, backgroundColor, settings, adjust, backgroundMode);
 }
 
 export interface CoverImages {
@@ -58,9 +64,24 @@ export function renderCoverImages(
   backgroundColor: RGB,
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
+  backgroundMode: BackgroundMode = 'color',
 ): CoverImages {
   return {
-    main: renderMainImage(sourceImage, frame, backgroundColor, globalSettings, adjust),
-    tab: renderTabImage(sourceImage, frame, backgroundColor, globalSettings, adjust),
+    main: renderMainImage(
+      sourceImage,
+      frame,
+      backgroundColor,
+      globalSettings,
+      adjust,
+      backgroundMode,
+    ),
+    tab: renderTabImage(
+      sourceImage,
+      frame,
+      backgroundColor,
+      globalSettings,
+      adjust,
+      backgroundMode,
+    ),
   };
 }

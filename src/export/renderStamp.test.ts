@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { compositeOntoCanvas, computeEffectiveFrame, computeStampWarnings, cropWithForcedBackground } from './renderStamp';
+import {
+  compositeOntoCanvas,
+  computeEffectiveFrame,
+  computeStampWarnings,
+  cropWithForcedBackground,
+} from './renderStamp';
 import { createSolidImage, fillRect } from '../split/testUtils';
 import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_STAMP_ADJUST } from '../split/types';
 
@@ -42,7 +47,28 @@ describe('cropWithForcedBackground', () => {
     expect(cropped.data[1]).toBe(255);
     expect(cropped.data[2]).toBe(255);
   });
+
+  it('backgroundMode: transparent のとき、枠外(余白部分)は透明にする', () => {
+    const image = createSolidImage(40, 40, { r: 0, g: 0, b: 0, a: 255 });
+    const cropped = cropWithForcedBackground(
+      image,
+      { x: 10, y: 10, width: 10, height: 10 },
+      5,
+      { r: 255, g: 255, b: 255 },
+      'transparent',
+    );
+    const marginIndex = (1 * 20 + 1) * 4;
+    expect(cropped.data[marginIndex + 3]).toBe(0);
+
+    // 枠内(元の画素)のアルファはそのまま保持する
+    const centerIndex = (10 * 20 + 10) * 4;
+    expect(cropped.data[centerIndex + 3]).toBe(255);
+  });
 });
+
+// renderStamp()自体はCanvas(resizeImageDataLike)に依存するためNode環境のVitestでは検証できない
+// (DOM依存部分はPlaywrightで確認する、プロジェクトの既存方針)。backgroundModeの分岐ロジックは、
+// 依存の少ないcropWithForcedBackground(上記)とexport/alpha.test.tsのkeepOriginalAlphaで検証する。
 
 describe('compositeOntoCanvas', () => {
   it('指定した位置に画像を貼り付け、範囲外は透明のままにする', () => {
@@ -86,7 +112,12 @@ describe('computeEffectiveFrame', () => {
 
   it('切り抜きすぎても最小1pxは保つ', () => {
     const frame = { x: 0, y: 0, width: 10, height: 10 };
-    const effective = computeEffectiveFrame(frame, { top: 100, right: 100, bottom: 100, left: 100 });
+    const effective = computeEffectiveFrame(frame, {
+      top: 100,
+      right: 100,
+      bottom: 100,
+      left: 100,
+    });
     expect(effective.width).toBeGreaterThanOrEqual(1);
     expect(effective.height).toBeGreaterThanOrEqual(1);
   });

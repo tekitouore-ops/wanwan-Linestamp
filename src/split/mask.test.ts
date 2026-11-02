@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildForegroundMask, estimateBackgroundColor, removeNoise } from './mask';
+import {
+  buildForegroundMask,
+  buildForegroundMaskFromAlpha,
+  detectIsTransparentImage,
+  estimateBackgroundColor,
+  removeNoise,
+} from './mask';
 import { createSolidImage, fillRect } from './testUtils';
 
 describe('estimateBackgroundColor', () => {
@@ -40,6 +46,35 @@ describe('buildForegroundMask', () => {
     fillRect(image, { x: 1, y: 1, width: 1, height: 1 }, { r: 260, g: 250, b: 250 });
     const mask = buildForegroundMask(image, { r: 255, g: 255, b: 255 }, 20);
     expect(mask.every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe('detectIsTransparentImage', () => {
+  it('画像全体の大部分が透明に近い場合は透過画像と判定する', () => {
+    const image = createSolidImage(10, 10, { r: 0, g: 0, b: 0, a: 0 });
+    fillRect(image, { x: 3, y: 3, width: 4, height: 4 }, { r: 0, g: 0, b: 0, a: 255 }); // 16/100画素だけ不透明
+    expect(detectIsTransparentImage(image)).toBe(true);
+  });
+
+  it('ほぼ不透明な画像は透過画像と判定しない(白背景などへのフォールバック)', () => {
+    const image = createSolidImage(10, 10, { r: 255, g: 255, b: 255, a: 255 });
+    expect(detectIsTransparentImage(image)).toBe(false);
+  });
+});
+
+describe('buildForegroundMaskFromAlpha', () => {
+  it('アルファがしきい値を超える画素だけを前景とする(背景色推定を行わない)', () => {
+    const image = createSolidImage(10, 10, { r: 0, g: 0, b: 0, a: 0 });
+    fillRect(image, { x: 2, y: 2, width: 3, height: 3 }, { r: 0, g: 0, b: 0, a: 255 });
+    const mask = buildForegroundMaskFromAlpha(image, 16);
+
+    let foregroundCount = 0;
+    for (let i = 0; i < mask.length; i += 1) {
+      foregroundCount += mask[i] ?? 0;
+    }
+    expect(foregroundCount).toBe(9);
+    expect(mask[2 * 10 + 2]).toBe(1);
+    expect(mask[0]).toBe(0);
   });
 });
 

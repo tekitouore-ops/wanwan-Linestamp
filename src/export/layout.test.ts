@@ -65,7 +65,9 @@ describe('computeLayout', () => {
   it('下揃えのとき、被写体の下端が下余白の位置に揃う', () => {
     const settings = { ...BASE_SETTINGS, align: 'bottom' as const };
     const result = computeLayout(100, 100, settings);
-    expect(result.drawY + result.drawHeight).toBeCloseTo(settings.outputHeight - settings.innerMargin);
+    expect(result.drawY + result.drawHeight).toBeCloseTo(
+      settings.outputHeight - settings.innerMargin,
+    );
   });
 
   it('拡大率が1.3倍を超えるとisUpscaledがtrueになる', () => {
