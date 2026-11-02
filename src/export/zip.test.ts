@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildStampZipFromBlobs, formatZipFileName } from './zip';
+import { buildFullZipFromBlobs, buildStampZipFromBlobs, formatZipFileName } from './zip';
 
 describe('buildStampZipFromBlobs', () => {
   it('01.png〜03.pngという名前でZIPに格納する', async () => {
@@ -15,6 +15,20 @@ describe('buildStampZipFromBlobs', () => {
     const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(await zipBlob.arrayBuffer());
     expect(Object.keys(zip.files).sort()).toEqual(['01.png', '02.png', '03.png']);
+  });
+});
+
+describe('buildFullZipFromBlobs', () => {
+  it('01.png〜03.pngに加えて、main.png・tab.pngも含める', async () => {
+    const stampBlobs = [new Blob(['a']), new Blob(['b']), new Blob(['c'])];
+    const zipBlob = await buildFullZipFromBlobs(stampBlobs, {
+      'main.png': new Blob(['main']),
+      'tab.png': new Blob(['tab']),
+    });
+
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(await zipBlob.arrayBuffer());
+    expect(Object.keys(zip.files).sort()).toEqual(['01.png', '02.png', '03.png', 'main.png', 'tab.png']);
   });
 });
 
