@@ -8,3 +8,5 @@ coverage/
 # サンプル画像(ユーザーが手元に配置する実データ。リポジトリには含めない)
 samples/*
 !samples/README.md
+# ゴールデンテスト用フィクスチャ(テキストデータ。テストから参照するためコミット対象)
+!samples/shiba-onigiri-rows.txt

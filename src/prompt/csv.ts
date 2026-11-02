@@ -1,5 +1,5 @@
 import { STAMP_COUNT } from '../shared/lineSpec';
-import { createEmptyRows, type StampRow } from './types';
+import { createEmptyRow, createEmptyRows, type StampRow } from './types';
 
 export interface ParseRowsResult {
   rows: StampRow[];
@@ -7,6 +7,7 @@ export interface ParseRowsResult {
 }
 
 const HEADER_CELLS = ['お題', '状況', 'セリフ'];
+const LEGACY_TOPIC_HEADER_CELL = 'お題';
 
 /**
  * 1行目のセルに見出し語が含まれていればヘッダー行とみなす。
@@ -76,8 +77,73 @@ function parseDelimited(text: string, delimiter: string): string[][] {
 }
 
 /**
- * CSV/TSVテキストを、常に{@link STAMP_COUNT}行ちょうどのStampRow[]に変換する。
- * 超過分は無視し、不足分は空欄で埋める。どちらの場合も警告メッセージを返す。
+ * 行頭が `『` で始まり `』｜` を含む行が過半数なら、`『セリフ』｜状況` 形式の貼り付けとみなす。
+ */
+function looksLikeBracketFormat(text: string): boolean {
+  const lines = text
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  if (lines.length === 0) {
+    return false;
+  }
+  const matching = lines.filter((line) => line.startsWith('『') && line.includes('』｜'));
+  return matching.length > lines.length / 2;
+}
+
+/**
+ * `『セリフ』｜状況` 形式のテキストを1行ずつ取り込む。改行だけで行を分け、
+ * セリフが空(`『』`)の行もそのまま空セリフとして取り込む。形式に合わない行は無視する。
+ */
+function parseBracketLines(text: string): StampRow[] {
+  const lines = text
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+
+  const rows: StampRow[] = [];
+  for (const line of lines) {
+    if (!line.startsWith('『')) {
+      continue;
+    }
+    const separatorIndex = line.indexOf('』｜');
+    if (separatorIndex !== -1) {
+      rows.push({
+        line: line.slice(1, separatorIndex),
+        situation: line.slice(separatorIndex + 2),
+      });
+    } else if (line.endsWith('』')) {
+      rows.push({ line: line.slice(1, -1), situation: '' });
+    }
+  }
+  return rows;
+}
+
+/** 24行ちょうどになるよう、超過分を切り捨て/不足分を空欄で補い、警告メッセージを添える。 */
+function padToStampCount(rows: StampRow[], warnings: string[]): StampRow[] {
+  let source = rows;
+  if (source.length > STAMP_COUNT) {
+    warnings.push(
+      `${STAMP_COUNT}行を超える分は無視しました(貼り付けられた行数: ${source.length}行)。`,
+    );
+    source = source.slice(0, STAMP_COUNT);
+  } else if (source.length < STAMP_COUNT) {
+    warnings.push(
+      `${STAMP_COUNT}行に満たないため、不足分は空欄にしました(貼り付けられた行数: ${source.length}行)。`,
+    );
+  }
+
+  const result: StampRow[] = [];
+  for (let i = 0; i < STAMP_COUNT; i += 1) {
+    result.push(source[i] ?? createEmptyRow());
+  }
+  return result;
+}
+
+/**
+ * 貼り付けテキストを、常に{@link STAMP_COUNT}行ちょうどのStampRow[]に変換する。
+ * `『セリフ』｜状況` 形式、`セリフ,状況` の2列CSV/TSV、旧`お題,状況,セリフ`の3列形式(ヘッダーに
+ * 「お題」があれば自動判定し、お題の列は捨てる)のいずれにも対応する。
  */
 export function parseRows(input: string): ParseRowsResult {
   const warnings: string[] = [];
@@ -87,12 +153,18 @@ export function parseRows(input: string): ParseRowsResult {
     return { rows: createEmptyRows(), warnings };
   }
 
+  if (looksLikeBracketFormat(text)) {
+    return { rows: padToStampCount(parseBracketLines(text), warnings), warnings };
+  }
+
   const delimiter = detectDelimiter(text);
   let table = parseDelimited(text, delimiter).filter(
     (row) => !(row.length === 1 && (row[0] ?? '').trim() === ''),
   );
 
+  let isLegacyThreeColumn = false;
   if (table.length > 0 && looksLikeHeader(table[0] ?? [])) {
+    isLegacyThreeColumn = (table[0] ?? []).some((cell) => cell.trim() === LEGACY_TOPIC_HEADER_CELL);
     table = table.slice(1);
   }
 
@@ -110,11 +182,17 @@ export function parseRows(input: string): ParseRowsResult {
   const rows: StampRow[] = [];
   for (let i = 0; i < STAMP_COUNT; i += 1) {
     const cells = table[i] ?? [];
-    rows.push({
-      topic: (cells[0] ?? '').trim(),
-      situation: (cells[1] ?? '').trim(),
-      line: (cells[2] ?? '').trim(),
-    });
+    if (isLegacyThreeColumn) {
+      rows.push({ situation: (cells[1] ?? '').trim(), line: (cells[2] ?? '').trim() });
+    } else {
+      rows.push({ line: (cells[0] ?? '').trim(), situation: (cells[1] ?? '').trim() });
+    }
+  }
+
+  if (isLegacyThreeColumn) {
+    warnings.push(
+      '旧形式(お題,状況,セリフ)のデータを読み込みました。お題の列は取り込まず、セリフと状況だけ反映しました。',
+    );
   }
 
   return { rows, warnings };
@@ -122,7 +200,7 @@ export function parseRows(input: string): ParseRowsResult {
 
 /** 「CSVテンプレートをダウンロード」用の空テンプレート(ヘッダー+24行の空欄)。 */
 export function buildCsvTemplate(): string {
-  const header = HEADER_CELLS.join(',');
-  const blankRow = ',,';
+  const header = 'セリフ,状況';
+  const blankRow = ',';
   return [header, ...Array.from({ length: STAMP_COUNT }, () => blankRow)].join('\n');
 }

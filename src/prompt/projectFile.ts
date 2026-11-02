@@ -1,14 +1,12 @@
 import { STAMP_COUNT } from '../shared/lineSpec';
 import {
-  DEFAULT_PROMPT_SETTINGS,
-  FONT_STYLE_PRESETS,
   createEmptyRow,
-  type FontStylePreset,
+  DEFAULT_PROMPT_SETTINGS,
   type PromptSettings,
   type StampRow,
 } from './types';
 
-export const PROJECT_FILE_VERSION = 1;
+export const PROJECT_FILE_VERSION = 2;
 
 export interface PromptProjectFile {
   version: typeof PROJECT_FILE_VERSION;
@@ -28,6 +26,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+/**
+ * `rows`を読み込む。v1(お題・状況・セリフ)のデータが来ても、line/situationフィールドは
+ * 同じ名前のまま存在するため、お題は単に読み捨てる形で自然に移行できる。
+ */
 function normalizeRows(value: unknown): StampRow[] {
   const source = Array.isArray(value) ? value : [];
   const rows: StampRow[] = [];
@@ -35,9 +37,8 @@ function normalizeRows(value: unknown): StampRow[] {
     const candidate = source[i];
     if (isRecord(candidate)) {
       rows.push({
-        topic: typeof candidate.topic === 'string' ? candidate.topic : '',
-        situation: typeof candidate.situation === 'string' ? candidate.situation : '',
         line: typeof candidate.line === 'string' ? candidate.line : '',
+        situation: typeof candidate.situation === 'string' ? candidate.situation : '',
       });
     } else {
       rows.push(createEmptyRow());
@@ -46,10 +47,11 @@ function normalizeRows(value: unknown): StampRow[] {
   return rows;
 }
 
-function isFontStylePreset(value: unknown): value is FontStylePreset {
-  return typeof value === 'string' && FONT_STYLE_PRESETS.some((preset) => preset.id === value);
-}
-
+/**
+ * `settings`を読み込む。v1には書体・文字色・縁取り・背景色などのフィールドもあるが、
+ * 新しい`PromptSettings`はcharacterNote/additionalInstructionsしか読まないため、
+ * それ以外は自動的に捨てられる(docs/decisions.md参照)。
+ */
 function normalizeSettings(value: unknown): PromptSettings {
   if (!isRecord(value)) {
     return { ...DEFAULT_PROMPT_SETTINGS };
@@ -59,41 +61,17 @@ function normalizeSettings(value: unknown): PromptSettings {
       typeof value.characterNote === 'string'
         ? value.characterNote
         : DEFAULT_PROMPT_SETTINGS.characterNote,
-    fontStylePreset: isFontStylePreset(value.fontStylePreset)
-      ? value.fontStylePreset
-      : DEFAULT_PROMPT_SETTINGS.fontStylePreset,
-    fontStyleCustom:
-      typeof value.fontStyleCustom === 'string'
-        ? value.fontStyleCustom
-        : DEFAULT_PROMPT_SETTINGS.fontStyleCustom,
-    textColor:
-      typeof value.textColor === 'string' ? value.textColor : DEFAULT_PROMPT_SETTINGS.textColor,
-    textOutline:
-      typeof value.textOutline === 'boolean'
-        ? value.textOutline
-        : DEFAULT_PROMPT_SETTINGS.textOutline,
-    backgroundColor:
-      typeof value.backgroundColor === 'string'
-        ? value.backgroundColor
-        : DEFAULT_PROMPT_SETTINGS.backgroundColor,
-    instructWhiteOutlineInPrompt:
-      typeof value.instructWhiteOutlineInPrompt === 'boolean'
-        ? value.instructWhiteOutlineInPrompt
-        : DEFAULT_PROMPT_SETTINGS.instructWhiteOutlineInPrompt,
     additionalInstructions:
       typeof value.additionalInstructions === 'string'
         ? value.additionalInstructions
         : DEFAULT_PROMPT_SETTINGS.additionalInstructions,
-    cols:
-      typeof value.cols === 'number' && value.cols > 0 ? value.cols : DEFAULT_PROMPT_SETTINGS.cols,
-    rows:
-      typeof value.rows === 'number' && value.rows > 0 ? value.rows : DEFAULT_PROMPT_SETTINGS.rows,
   };
 }
 
 /**
  * プロジェクトJSONを読み込む。ファイル境界からの入力のため、型を保証せず1項目ずつ検証する。
- * 壊れたフィールドは既定値で補い、致命的に形式が違う場合のみエラーを返す。
+ * v1(旧お題・書体・文字色等を含む形式)のデータも、rows/settingsとも壊れずに移行できる
+ * (お題・書体・文字色・縁取り・白フチ・背景色は読み捨て、セリフと状況だけ引き継ぐ)。
  */
 export function deserializeProject(json: string): DeserializeResult {
   let parsed: unknown;

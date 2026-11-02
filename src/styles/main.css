@@ -398,6 +398,23 @@ body {
   resize: vertical;
 }
 
+/* 固定文と24行部分を見分けられる程度に薄く区切る(コピーされるテキストには区切りを含めない)。 */
+.output__textarea-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.output__textarea-group .output__textarea--fixed {
+  border-radius: 8px 8px 0 0;
+  border-bottom: none;
+}
+
+.output__textarea-group .output__textarea--content {
+  border-radius: 0 0 8px 8px;
+  border-top: 2px dashed var(--color-border);
+  background: #fbfaf7;
+}
+
 .output__footer {
   display: flex;
   align-items: center;

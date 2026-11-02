@@ -4,7 +4,8 @@
 
 ```
 ui/        共通UI部品(タブ、ボタン、スライダー、トースト、ドロップゾーン等)
-prompt/    機能1: プロンプト生成(types, buildPrompt, csv, projectFile, promptView)
+prompt/    機能1: プロンプト生成(types, layoutConstants, fixedText, buildPrompt, csv,
+           projectFile, promptView)
 split/     機能2前半: 検出・編集・ステップA/B画面(types, mask, gridSplit, editorState,
            splitView, detectView, previewView, stampCard, adjustPanel, backgroundPicker)
 export/    機能2後半: 規格化・書き出し(alpha, edge, outline, layout, renderStamp,
