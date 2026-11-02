@@ -28,13 +28,13 @@ npm run format      # Prettier
 ```
 ui/        共通UI部品(タブ、ボタン、スライダー、トースト、ドロップゾーン等)
 prompt/    機能1: プロンプト生成
-split/     機能2前半: シート画像の自動検出・エディタ
-export/    機能2後半: 規格化・書き出し
-shared/    共通基盤(lineSpec, imageData, store, dom, types)
+split/     機能2: 検出・ステップA(枠編集)/ステップB(カード一覧+調整パネル)の画面
+export/    機能2: 規格化・書き出し(背景透過・縁補正・配置・縁フチ・表紙画像・ZIP)
+shared/    共通基盤(lineSpec, imageData, store, dom, file, types)
 ```
 
 依存は一方向: `ui` / `prompt` / `split` / `export` → `shared`。
-`export` は `split` の型(bbox・エディタ結果)のみ参照してよい。`prompt` と `split` は互いに依存しない。
+`export` は `split` の型(`Rect`・`StampAdjust`等)のみ参照してよい。`prompt` と `split` は互いに依存しない。
 
 詳細なデータフロー・検出アルゴリズム・描画パイプラインは `docs/architecture.md` を参照。
 
