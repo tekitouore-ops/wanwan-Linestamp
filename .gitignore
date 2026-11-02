@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.vite/
+*.local
+.DS_Store
+coverage/
+
+# サンプル画像(ユーザーが手元に配置する実データ。リポジトリには含めない)
+samples/*
+!samples/README.md
