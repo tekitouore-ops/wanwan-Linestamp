@@ -463,6 +463,81 @@ body {
   background: #8a2f1f;
 }
 
+/* ---- タブ②: シートタブ ---- */
+
+.sheet-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.sheet-tabs__list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.sheet-tabs__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.sheet-tabs__tab--active {
+  border-color: var(--color-accent);
+  background: #fdf8f1;
+}
+
+.sheet-tabs__tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.sheet-tabs__badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.sheet-tabs__name {
+  width: 7em;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 0.85rem;
+  background: transparent;
+}
+
+.sheet-tabs__name:hover,
+.sheet-tabs__name:focus-visible {
+  border-color: var(--color-border);
+  background: #fff;
+}
+
+.sheet-tabs__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.sheet-tabs__actions .button--text {
+  font-size: 0.72rem;
+  padding: 2px 4px;
+}
+
+.sheet-tabs__add {
+  flex-shrink: 0;
+}
+
 /* ---- タブ②: 検出・エディタ ---- */
 
 .split-layout {
@@ -495,6 +570,10 @@ body {
 .split-canvas:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+.split-canvas--dark {
+  background: #1e1e1e;
 }
 
 .split-method-label {
@@ -678,6 +757,13 @@ body {
   background: #d9382b;
 }
 
+.stamp-card__badge--source {
+  left: 4px;
+  bottom: 4px;
+  top: auto;
+  background: #2d6cdf;
+}
+
 .stamp-card__dot {
   position: absolute;
   bottom: 4px;
@@ -801,4 +887,96 @@ body {
   flex-direction: column;
   gap: 8px;
   margin: 10px 0;
+}
+
+/* ---- タブ②: 採用元(複数シート) ---- */
+
+.source-picker {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.source-picker__list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.source-picker__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.source-picker__item--active {
+  border-color: var(--color-accent);
+  background: #fdf8f1;
+}
+
+.source-picker__item--warning .source-picker__label {
+  color: #c98a00;
+}
+
+.source-picker__canvas {
+  width: 56px;
+  height: 56px;
+  border-radius: 4px;
+  background: repeating-conic-gradient(#e9e6dd 0% 25%, #fff 0% 50%) 50% / 10px 10px;
+}
+
+.source-picker__label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+/* ---- タブ②: 全シートで比較ダイアログ ---- */
+
+.compare-dialog {
+  width: min(720px, 92vw);
+  max-height: 85vh;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.compare-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.compare-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 14px;
+  margin: 10px 0;
+}
+
+.compare-dialog__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.compare-dialog__canvas {
+  width: 100%;
+  max-width: 160px;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  border-radius: 6px;
+  background: repeating-conic-gradient(#e9e6dd 0% 25%, #fff 0% 50%) 50% / 12px 12px;
+}
+
+.compare-dialog__name {
+  margin: 0;
+  font-size: 0.78rem;
+  text-align: center;
 }

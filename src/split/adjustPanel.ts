@@ -4,19 +4,22 @@ import { createSliderField, type SliderField } from '../ui/slider';
 import {
   DEFAULT_GLOBAL_SETTINGS,
   DEFAULT_STAMP_ADJUST,
+  type CropAmount,
   type GlobalSettings,
   type Rect,
   type StampAdjust,
+  type StampAdjustFields,
 } from './types';
 
-type ApplyableField = Exclude<keyof StampAdjust, 'crop'>;
-
 export interface AdjustPanelCallbacks {
-  onAdjustChange: (index: number, patch: Partial<StampAdjust>) => void;
+  onAdjustChange: (index: number, patch: Partial<StampAdjustFields>) => void;
+  onCropChange: (index: number, crop: CropAmount) => void;
   onResetStamp: (index: number) => void;
-  onApplyToAll: (index: number, fields: readonly ApplyableField[]) => void;
+  onApplyToAll: (index: number, fields: readonly (keyof StampAdjustFields)[]) => void;
   onSetCover: (index: number) => void;
   onGlobalSettingsChange: (patch: Partial<GlobalSettings>) => void;
+  onCompareSources: (index: number) => void;
+  onBulkSource: () => void;
 }
 
 export interface ShowForStampParams {
@@ -24,6 +27,10 @@ export interface ShowForStampParams {
   frame: Rect;
   resolved: StampAdjust;
   isCover: boolean;
+  /** 採用元の選択UI(シートが2枚以上のときだけ中身がある、previewView.ts側で用意した要素)。 */
+  sourcePickerElement: HTMLElement;
+  /** シートが2枚以上あるか(「全シートで比較」「採用元をまとめて設定」ボタンの表示切替に使う)。 */
+  hasMultipleSheets: boolean;
 }
 
 export interface AdjustPanelHandle {
@@ -111,9 +118,14 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
   );
   alignSelect.value = DEFAULT_GLOBAL_SETTINGS.align;
   alignSelect.addEventListener('change', () => {
-    callbacks.onGlobalSettingsChange({ align: alignSelect.value === 'bottom' ? 'bottom' : 'center' });
+    callbacks.onGlobalSettingsChange({
+      align: alignSelect.value === 'bottom' ? 'bottom' : 'center',
+    });
   });
-  const alignField = h('div', { className: 'field' }, [h('label', { className: 'field__label', text: '揃え' }), alignSelect]);
+  const alignField = h('div', { className: 'field' }, [
+    h('label', { className: 'field__label', text: '揃え' }),
+    alignSelect,
+  ]);
 
   const allowUpscaleCheckbox = h('input', { attrs: { type: 'checkbox' } });
   allowUpscaleCheckbox.checked = DEFAULT_GLOBAL_SETTINGS.allowUpscale;
@@ -121,7 +133,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     callbacks.onGlobalSettingsChange({ allowUpscale: allowUpscaleCheckbox.checked });
   });
   const allowUpscaleField = h('div', { className: 'field field--checkbox' }, [
-    h('label', { className: 'checkbox-field' }, [allowUpscaleCheckbox, ' 被写体が小さいときの拡大を許可する']),
+    h('label', { className: 'checkbox-field' }, [
+      allowUpscaleCheckbox,
+      ' 被写体が小さいときの拡大を許可する',
+    ]),
   ]);
 
   const globalSettingsSection = h('details', { className: 'adjust-panel__global' }, [
@@ -150,7 +165,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
 
   // ---- 「全体に適用…」ダイアログ(1度だけ作る) ----
 
-  const applyFieldCheckboxes: Record<'edgeFix' | 'outline' | 'scale' | 'position', HTMLInputElement> = {
+  const applyFieldCheckboxes: Record<
+    'edgeFix' | 'outline' | 'scale' | 'position',
+    HTMLInputElement
+  > = {
     edgeFix: h('input', { attrs: { type: 'checkbox' } }),
     outline: h('input', { attrs: { type: 'checkbox' } }),
     scale: h('input', { attrs: { type: 'checkbox' } }),
@@ -162,7 +180,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
 
   const applyDialog = h('dialog', { className: 'apply-all-dialog' }, [
     h('h2', { text: '他の23枚に適用' }),
-    h('p', { className: 'field__hint', text: '選択中のスタンプの値を、チェックした項目だけ他のすべてのスタンプにコピーします。' }),
+    h('p', {
+      className: 'field__hint',
+      text: '選択中のスタンプの値を、チェックした項目だけ他のすべてのスタンプにコピーします。',
+    }),
     h('div', { className: 'apply-all-dialog__fields' }, [
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.edgeFix, ' 縁補正']),
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.outline, ' 縁フチ']),
@@ -170,7 +191,12 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.position, ' 位置(横・縦)']),
     ]),
     h('div', { className: 'csv-dialog__actions' }, [
-      h('button', { className: 'button', attrs: { type: 'button' }, text: 'キャンセル', on: { click: () => applyDialog.close() } }),
+      h('button', {
+        className: 'button',
+        attrs: { type: 'button' },
+        text: 'キャンセル',
+        on: { click: () => applyDialog.close() },
+      }),
       h('button', {
         className: 'button button--primary',
         attrs: { type: 'button' },
@@ -181,7 +207,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
               applyDialog.close();
               return;
             }
-            const fields: ApplyableField[] = [];
+            const fields: (keyof StampAdjustFields)[] = [];
             if (applyFieldCheckboxes.edgeFix.checked) fields.push('edgeFix');
             if (applyFieldCheckboxes.outline.checked) fields.push('outline');
             if (applyFieldCheckboxes.scale.checked) fields.push('scale');
@@ -228,21 +254,38 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     const cropLeftMax = cropMax(frame.width);
     const cropRightMax = cropMax(frame.width);
 
-    function makeCropSlider(label: string, max: number, value: number, onChange: (v: number) => void): SliderField {
-      return createSliderField({ label, unit: 'px', min: 0, max, step: 1, value, defaultValue: 0, onChange });
+    function makeCropSlider(
+      label: string,
+      max: number,
+      value: number,
+      onChange: (v: number) => void,
+    ): SliderField {
+      return createSliderField({
+        label,
+        unit: 'px',
+        min: 0,
+        max,
+        step: 1,
+        value,
+        defaultValue: 0,
+        onChange,
+      });
     }
 
     const cropTopSlider = makeCropSlider('切り抜き(上)', cropTopMax, resolved.crop.top, (v) =>
-      callbacks.onAdjustChange(index, { crop: { ...resolved.crop, top: v } }),
+      callbacks.onCropChange(index, { ...resolved.crop, top: v }),
     );
     const cropRightSlider = makeCropSlider('切り抜き(右)', cropRightMax, resolved.crop.right, (v) =>
-      callbacks.onAdjustChange(index, { crop: { ...resolved.crop, right: v } }),
+      callbacks.onCropChange(index, { ...resolved.crop, right: v }),
     );
-    const cropBottomSlider = makeCropSlider('切り抜き(下)', cropBottomMax, resolved.crop.bottom, (v) =>
-      callbacks.onAdjustChange(index, { crop: { ...resolved.crop, bottom: v } }),
+    const cropBottomSlider = makeCropSlider(
+      '切り抜き(下)',
+      cropBottomMax,
+      resolved.crop.bottom,
+      (v) => callbacks.onCropChange(index, { ...resolved.crop, bottom: v }),
     );
     const cropLeftSlider = makeCropSlider('切り抜き(左)', cropLeftMax, resolved.crop.left, (v) =>
-      callbacks.onAdjustChange(index, { crop: { ...resolved.crop, left: v } }),
+      callbacks.onCropChange(index, { ...resolved.crop, left: v }),
     );
 
     const scaleSlider = createSliderField({
@@ -294,9 +337,24 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       text: '全体に適用…',
       on: { click: () => applyDialog.showModal() },
     });
+    const compareButton = h('button', {
+      className: 'button',
+      attrs: { type: 'button' },
+      text: '全シートで比較…',
+      on: { click: () => callbacks.onCompareSources(index) },
+    });
+    const bulkSourceButton = h('button', {
+      className: 'button',
+      attrs: { type: 'button' },
+      text: '採用元をまとめて設定…',
+      on: { click: () => callbacks.onBulkSource() },
+    });
+    const sourceButtonsRow = h('div', { className: 'toolbar' }, [compareButton, bulkSourceButton]);
+    sourceButtonsRow.hidden = !params.hasMultipleSheets;
 
     stampSection.replaceChildren(
       h('p', { className: 'adjust-panel__title', text: `${stampFileName(index + 1)} を調整中` }),
+      params.sourcePickerElement,
       h('h4', { className: 'split-section-heading', text: '補正' }),
       edgeFixSlider.element,
       outlineSlider.element,
@@ -311,6 +369,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       offsetYSlider.element,
       h('div', { className: 'toolbar' }, [coverButton]),
       h('div', { className: 'toolbar' }, [resetButton, applyAllButton]),
+      sourceButtonsRow,
     );
   }
 
@@ -321,7 +380,9 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
 
   function showEmpty(): void {
     currentIndex = null;
-    stampSection.replaceChildren(h('p', { className: 'field__hint', text: 'カードを選択すると、ここで調整できます。' }));
+    stampSection.replaceChildren(
+      h('p', { className: 'field__hint', text: 'カードを選択すると、ここで調整できます。' }),
+    );
   }
   showEmpty();
 

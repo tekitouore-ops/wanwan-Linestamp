@@ -67,7 +67,8 @@ export function createBackgroundPicker(
   function syncUI(): void {
     checkerButton.classList.toggle('button--active', current.mode === 'checker');
     presetButtons.forEach((button, i) => {
-      const isActive = current.mode === 'color' && current.color.toLowerCase() === PRESET_COLORS[i]?.hex;
+      const isActive =
+        current.mode === 'color' && current.color.toLowerCase() === PRESET_COLORS[i]?.hex;
       button.classList.toggle('bg-picker__swatch--active', isActive);
     });
     colorInput.value = current.color;
@@ -77,7 +78,10 @@ export function createBackgroundPicker(
 
   const element = h('div', { className: 'bg-picker' }, [
     h('div', { className: 'toolbar' }, [checkerButton, ...presetButtons, colorInput, hexInput]),
-    h('p', { className: 'field__hint', text: '確認用の表示のみです。書き出す画像は常に透過のままです。' }),
+    h('p', {
+      className: 'field__hint',
+      text: '確認用の表示のみです。書き出す画像は常に透過のままです。',
+    }),
   ]);
 
   return {
