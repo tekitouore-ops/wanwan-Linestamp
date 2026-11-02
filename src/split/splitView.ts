@@ -57,6 +57,8 @@ import {
 const VIEWPORT_WIDTH = 900;
 const VIEWPORT_HEIGHT = 600;
 const HANDLE_SCREEN_PX = 9;
+/** これを超える辺の長さの画像は、処理に時間がかかる可能性がある旨を警告する(処理自体は続行する)。 */
+const HUGE_IMAGE_WARNING_DIMENSION_PX = DETECTION_MAX_DIMENSION_PX * 2;
 
 type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -426,7 +428,12 @@ export function createSplitView(): HTMLElement {
       return;
     }
     const settings = mergeRenderSettings(globalSettings, overrides[index]);
-    const rendered = renderStamp(originalImage, cell.box, lastBackgroundColor, settings);
+    let rendered: ImageDataLike;
+    try {
+      rendered = renderStamp(originalImage, cell.box, lastBackgroundColor, settings);
+    } catch {
+      return; // このセルの描画だけ諦め、他のセルの表示は継続する
+    }
     lastRenderedImages[index] = rendered;
 
     thumb.canvas.width = rendered.width;
@@ -924,27 +931,34 @@ export function createSplitView(): HTMLElement {
     if (!originalImage) {
       return;
     }
-    const detectionSource = downscaleImageData(originalImage, DETECTION_MAX_DIMENSION_PX);
-    const scaleToOriginal = originalImage.width / detectionSource.width;
-    lastBackgroundColor =
-      detectionParams.backgroundColor ?? estimateBackgroundColor(detectionSource);
+    try {
+      const detectionSource = downscaleImageData(originalImage, DETECTION_MAX_DIMENSION_PX);
+      const scaleToOriginal = originalImage.width / detectionSource.width;
+      lastBackgroundColor =
+        detectionParams.backgroundColor ?? estimateBackgroundColor(detectionSource);
 
-    const result = useEqualDivision
-      ? detectGridEqualDivision(detectionSource, detectionParams)
-      : detectGrid(detectionSource, detectionParams);
+      const result = useEqualDivision
+        ? detectGridEqualDivision(detectionSource, detectionParams)
+        : detectGrid(detectionSource, detectionParams);
 
-    const scaledCells = result.cells.map((cell) => ({
-      ...cell,
-      box: {
-        x: Math.round(cell.box.x * scaleToOriginal),
-        y: Math.round(cell.box.y * scaleToOriginal),
-        width: Math.round(cell.box.width * scaleToOriginal),
-        height: Math.round(cell.box.height * scaleToOriginal),
-      },
-    }));
+      const scaledCells = result.cells.map((cell) => ({
+        ...cell,
+        box: {
+          x: Math.round(cell.box.x * scaleToOriginal),
+          y: Math.round(cell.box.y * scaleToOriginal),
+          width: Math.round(cell.box.width * scaleToOriginal),
+          height: Math.round(cell.box.height * scaleToOriginal),
+        },
+      }));
 
-    lastMethod = result.method;
-    editorStore.setState(createEditorState({ cells: scaledCells, method: result.method }));
+      lastMethod = result.method;
+      editorStore.setState(createEditorState({ cells: scaledCells, method: result.method }));
+    } catch {
+      showToast(
+        '検出に失敗しました。パラメータを変えて再検出するか、均等分割をお試しください。',
+        'error',
+      );
+    }
   }
 
   function updateMethodLabel(): void {
@@ -1376,6 +1390,12 @@ export function createSplitView(): HTMLElement {
     onFile: (file) => {
       void loadImageDataFromFile(file)
         .then((image) => {
+          if (Math.max(image.width, image.height) > HUGE_IMAGE_WARNING_DIMENSION_PX) {
+            showToast(
+              `画像がかなり大きいです(${image.width}×${image.height}px)。処理に時間がかかる場合があります。`,
+              'error',
+            );
+          }
           originalImage = image;
           cachedCanvas = imageDataLikeToCanvas(image);
           baseScale =
@@ -1390,7 +1410,10 @@ export function createSplitView(): HTMLElement {
           renderAllThumbnails();
         })
         .catch(() => {
-          showToast('画像の読み込みに失敗しました。別のファイルをお試しください。', 'error');
+          showToast(
+            '画像の読み込みに失敗しました。ファイルが壊れていないか、画像が大きすぎないか確認してください。',
+            'error',
+          );
         });
     },
     onInvalidFile: (message) => showToast(message, 'error'),

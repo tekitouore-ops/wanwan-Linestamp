@@ -149,6 +149,9 @@ function createReferenceImageSection(state: PromptViewState): HTMLElement {
           updatePreview();
         }
       };
+      reader.onerror = () => {
+        showToast('画像の読み込みに失敗しました。別のファイルをお試しください。', 'error');
+      };
       reader.readAsDataURL(file);
     },
     onInvalidFile: (message) => showToast(message, 'error'),
@@ -449,7 +452,12 @@ export function createPromptView(): HTMLElement {
 
   const outputTextarea = h('textarea', {
     className: 'output__textarea',
-    attrs: { readonly: 'true', rows: '18', 'aria-label': '生成されたプロンプト' },
+    attrs: {
+      readonly: 'true',
+      rows: '18',
+      'aria-label': '生成されたプロンプト',
+      placeholder: '上の「プロンプトを生成」ボタンを押すと、ここに全文が表示されます。',
+    },
   });
   const charCount = h('p', { className: 'output__char-count', text: '0文字' });
 
