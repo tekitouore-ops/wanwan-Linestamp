@@ -83,3 +83,359 @@ body {
   border-radius: 8px;
   background: var(--color-surface);
 }
+
+/* ---- 共通パーツ ---- */
+
+.section-heading {
+  margin: 28px 0 10px;
+  font-size: 1.05rem;
+  border-left: 4px solid var(--color-accent);
+  padding-left: 8px;
+}
+
+.section-heading:first-of-type {
+  margin-top: 0;
+}
+
+.callout {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: #fff6e8;
+  border: 1px solid #f0dcb4;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.warning-banner {
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: #fff1ed;
+  border: 1px solid #f1c3b4;
+  border-radius: 6px;
+  color: #8a4a2f;
+  font-size: 0.85rem;
+}
+
+.warning-banner[hidden] {
+  display: none;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.button {
+  padding: 8px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: var(--color-accent);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.button--primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.button--primary:hover {
+  opacity: 0.9;
+}
+
+.button--text {
+  border: none;
+  background: none;
+  padding: 4px 0;
+  text-decoration: underline;
+  color: var(--color-text-muted);
+}
+
+/* ---- ドロップゾーン ---- */
+
+.dropzone {
+  padding: 24px;
+  border: 2px dashed var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+  text-align: center;
+  cursor: pointer;
+}
+
+.dropzone:hover,
+.dropzone--active {
+  border-color: var(--color-accent);
+  background: #fdf8f1;
+}
+
+.dropzone:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.dropzone__label {
+  margin: 0;
+  font-weight: 600;
+}
+
+.dropzone__hint {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.dropzone__input {
+  display: none;
+}
+
+/* ---- 参照画像 ---- */
+
+.reference-image {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.reference-image__preview {
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  object-fit: contain;
+  background: #fff;
+}
+
+.reference-image__preview[hidden] {
+  display: none;
+}
+
+/* ---- 24行の表 ---- */
+
+.rows-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.rows-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.rows-table th,
+.rows-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.rows-table th {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  font-weight: 600;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.rows-table__no {
+  width: 2.5em;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rows-table__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font: inherit;
+  background: transparent;
+}
+
+.rows-table__input:hover {
+  border-color: var(--color-border);
+}
+
+.rows-table__input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  background: #fff;
+}
+
+/* ---- 共通設定フォーム ---- */
+
+.settings-form {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.field__hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+
+.field[hidden] {
+  display: none;
+}
+
+.field textarea,
+.field select,
+.field input[type='text'] {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+  resize: vertical;
+}
+
+.field input[type='color'] {
+  width: 56px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.field--checkbox {
+  gap: 6px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+}
+
+/* ---- CSV貼り付けダイアログ ---- */
+
+.csv-dialog {
+  width: min(560px, 90vw);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.csv-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.csv-dialog__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.csv-dialog__hint {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.csv-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* ---- 生成結果 ---- */
+
+.output__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  background: var(--color-surface);
+  resize: vertical;
+}
+
+.output__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.output__char-count {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+/* ---- トースト通知 ---- */
+
+.toast-container {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.toast {
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: #2b2b28;
+  color: #fff;
+  font-size: 0.85rem;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.toast--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast--error {
+  background: #8a2f1f;
+}

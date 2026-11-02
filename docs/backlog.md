@@ -10,3 +10,4 @@
 - **GitHub Pagesでの公開**: Phase 5で `deploy.yml` を用意する。公開設定(Settings → Pages → Source → GitHub Actions)はユーザー側の手動作業。
 - **Web Workerへの処理オフロード**: 検出・フラッドフィル処理が重い場合に、UIスレッドのカクつきを避けるためWorkerに逃がす。現行はメインスレッドで実装し、問題が出た場合に対応する想定。
 - **Undo/Redo**: 検出結果エディタでの枠編集に対するUndo/Redo(Phase 3で余力があれば先行実装)。
+- **個別再生成プロンプト(タブ①)**: 各行に「この1個だけ再生成するプロンプトを作る」ボタンを追加する。テンプレート設計は `docs/prompt-template.md` に記載済み。Phase 2では見送った(docs/decisions.md参照)。

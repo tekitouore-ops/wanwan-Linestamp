@@ -1,4 +1,5 @@
 import './styles/main.css';
+import { createPromptView } from './prompt/promptView';
 import { h } from './shared/dom';
 import { Store } from './shared/store';
 import { createTabs, type TabDefinition } from './ui/tabs';
@@ -13,7 +14,7 @@ const tabs: Array<TabDefinition<TabId>> = [
   {
     id: 'prompt',
     label: '① プロンプト作成',
-    render: () => renderPlaceholder('準備中: プロンプト作成タブ(Phase 2で実装予定)'),
+    render: () => createPromptView(),
   },
   {
     id: 'split',
