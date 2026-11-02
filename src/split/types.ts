@@ -29,23 +29,31 @@ export interface DetectionResult {
   method: DetectionMethod;
 }
 
+/** 背景の扱い。`color`=背景色推定+色差方式(白背景などへのフォールバック)、`transparent`=元のアルファをそのまま使う。 */
+export type BackgroundMode = 'color' | 'transparent';
+
 export interface DetectionParams {
-  /** 未指定時は画像外周から自動推定する。 */
+  /** `backgroundMode: 'color'` のとき、未指定なら画像外周から自動推定する。 */
   backgroundColor?: RGB;
-  /** 背景判定しきい値(1〜80)。 */
+  /** 背景判定しきい値(1〜80、`backgroundMode: 'color'` のときのみ使う)。 */
   backgroundThreshold: number;
   /** ノイズ除去の最小面積(画像全体に対する比率、0〜1)。 */
   minAreaRatio: number;
   cols: number;
   rows: number;
+  backgroundMode: BackgroundMode;
+  /** 前景判定しきい値(alpha、1〜80、`backgroundMode: 'transparent'` のときのみ使う)。 */
+  alphaThreshold: number;
 }
 
 export const DEFAULT_DETECTION_PARAMS: Omit<DetectionParams, 'cols' | 'rows'> = {
   backgroundThreshold: 20,
   minAreaRatio: 0.00005,
+  backgroundMode: 'color',
+  alphaThreshold: 16,
 };
 
-/** 検出枠からの切り抜き量(元画像px)。各辺を内側へ削る。 */
+/** 検出枠からの切り抜き量(元画像px)。各辺を内側へ削る。採用元シートごとに別々に保持する。 */
 export interface CropAmount {
   top: number;
   right: number;
@@ -53,13 +61,18 @@ export interface CropAmount {
   left: number;
 }
 
-/** 1スタンプぶんの個別設定。ステップBの左パネルで調整する項目。 */
+export const DEFAULT_CROP: CropAmount = { top: 0, right: 0, bottom: 0, left: 0 };
+
+/**
+ * 1スタンプぶんの描画用の調整値(解決済み・フラット形式)。`export/renderStamp.ts` 等、
+ * 実際に描画する側はこの形で受け取る(採用元シートごとの出し分けは呼び出し側で解決済みとする)。
+ */
 export interface StampAdjust {
   /** 縁補正(-5〜+10px)。正で収縮(削る)、負で膨張(戻す)。 */
   edgeFix: number;
   /** 縁フチの太さ(0〜16px)。 */
   outline: number;
-  /** 検出枠からの切り抜き量(元画像px)。 */
+  /** 検出枠からの切り抜き量(元画像px、採用元シートの枠に対する値)。 */
   crop: CropAmount;
   /** 拡大率(%)。100 = 安全領域にフィットする倍率。 */
   scale: number;
@@ -68,8 +81,6 @@ export interface StampAdjust {
   /** 縦位置オフセット(出力px)。 */
   offsetY: number;
 }
-
-export const DEFAULT_CROP: CropAmount = { top: 0, right: 0, bottom: 0, left: 0 };
 
 export const DEFAULT_STAMP_ADJUST: StampAdjust = {
   edgeFix: 0,
@@ -80,7 +91,10 @@ export const DEFAULT_STAMP_ADJUST: StampAdjust = {
   offsetY: 0,
 };
 
-/** ステップBの全体設定(個別設定で上書きしていない項目の既定値)。 */
+/** `StampAdjust` のうち、採用元シートを切り替えても引き継ぐ項目(crop以外)。 */
+export type StampAdjustFields = Omit<StampAdjust, 'crop'>;
+
+/** ステップBの全体設定(個別設定で上書きしていない項目の既定値)。プロジェクト全体で共通。 */
 export interface GlobalSettings {
   outputWidth: number;
   outputHeight: number;
@@ -88,7 +102,7 @@ export interface GlobalSettings {
   innerMargin: number;
   /** 縁フチの既定値(px)。個別設定で上書きしていないスタンプに使う。 */
   defaultOutline: number;
-  /** 透過しきい値(1〜80)。 */
+  /** 透過しきい値(1〜80、書き出し時の背景除去〈`export/alpha.ts`〉で使う)。 */
   alphaThreshold: number;
   /** エッジのぼかし幅(0〜3px)。 */
   featherPx: number;
@@ -118,36 +132,87 @@ export const DEFAULT_PREVIEW_SETTINGS: PreviewSettings = {
   color: '#ffffff',
 };
 
-/** タブ②ステップBの作業状態。設定JSONとして保存/読込できる(画像本体は含めない)。 */
-export interface ProjectState {
-  version: 1;
-  sourceName: string;
+/**
+ * 1枚のシート(読み込んだ画像1つぶん)のメタ情報。画像データ本体(ImageDataLike)は
+ * `split/sheetStore.ts` が別途Mapで保持し、`ProjectState`・設定JSONには含めない。
+ */
+export interface Sheet {
+  id: string;
+  /** 表示名(初期値はファイル名)。変更可。 */
+  name: string;
+  width: number;
+  height: number;
+  detectSettings: DetectionParams;
   /** 確定した検出枠(ステップAで編集した結果)。番号順、24個。 */
   frames: Rect[];
+  /** `frames` と同じ並びの警告一覧。 */
+  frameWarnings: CellWarning[][];
+}
+
+/**
+ * スタンプ番号ごとの個別設定。`sourceSheetId` でどのシートの同じ番号の枠を採用するかを指し、
+ * `adjust`(crop以外)は採用元を切り替えても引き継ぎ、`cropBySheet` は採用元シートごとに別々に持つ。
+ */
+export interface StampSetting {
+  sourceSheetId: string;
+  adjust: Partial<StampAdjustFields>;
+  cropBySheet: Record<string, CropAmount>;
+}
+
+export function createDefaultStampSetting(sourceSheetId: string): StampSetting {
+  return { sourceSheetId, adjust: {}, cropBySheet: {} };
+}
+
+/** タブ②ステップBの作業状態。設定JSONとして保存/読込できる(画像本体は含めない)。 */
+export interface ProjectState {
+  version: 2;
+  sheets: Sheet[];
+  /** 24個。番号順。 */
+  stamps: StampSetting[];
   globalSettings: GlobalSettings;
-  /** 24個。未設定の項目は全体設定の既定値を使う。 */
-  stamps: Array<Partial<StampAdjust>>;
   /** 表紙に設定したスタンプの番号(0始まり)。 */
   coverIndex: number;
   preview: PreviewSettings;
 }
 
-/** 個別設定(`Partial<StampAdjust>`)を全体設定の既定値とマージし、実際に使う値を求める。 */
+/**
+ * スタンプ設定(`StampSetting`)と全体設定から、実際に描画へ渡す `StampAdjust`(解決済み・フラット形式)
+ * を求める。`crop` は `setting.sourceSheetId` に対応する値(なければ既定値)を使う。
+ */
 export function resolveStampAdjust(
   globalSettings: GlobalSettings,
-  override: Partial<StampAdjust> | undefined,
+  setting: StampSetting | undefined,
 ): StampAdjust {
+  const crop = (setting && setting.cropBySheet[setting.sourceSheetId]) ?? DEFAULT_CROP;
   return {
-    edgeFix: override?.edgeFix ?? DEFAULT_STAMP_ADJUST.edgeFix,
-    outline: override?.outline ?? globalSettings.defaultOutline,
-    crop: override?.crop ?? DEFAULT_CROP,
-    scale: override?.scale ?? DEFAULT_STAMP_ADJUST.scale,
-    offsetX: override?.offsetX ?? DEFAULT_STAMP_ADJUST.offsetX,
-    offsetY: override?.offsetY ?? DEFAULT_STAMP_ADJUST.offsetY,
+    edgeFix: setting?.adjust.edgeFix ?? DEFAULT_STAMP_ADJUST.edgeFix,
+    outline: setting?.adjust.outline ?? globalSettings.defaultOutline,
+    crop,
+    scale: setting?.adjust.scale ?? DEFAULT_STAMP_ADJUST.scale,
+    offsetX: setting?.adjust.offsetX ?? DEFAULT_STAMP_ADJUST.offsetX,
+    offsetY: setting?.adjust.offsetY ?? DEFAULT_STAMP_ADJUST.offsetY,
   };
 }
 
-/** `stamps[i]` に何らかの上書き値が入っているか(カードのドット表示に使う)。 */
-export function isStampOverridden(override: Partial<StampAdjust> | undefined): boolean {
-  return Boolean(override) && Object.keys(override as Partial<StampAdjust>).length > 0;
+/**
+ * 個別設定が変更済みか(カードのドット表示用)。`adjust`/`cropBySheet` に値があるか、
+ * `sourceSheetId` が既定(そのスタンプの初期の採用元シート)と異なる場合にtrueとする。
+ */
+export function isStampOverridden(
+  setting: StampSetting | undefined,
+  defaultSourceSheetId: string,
+): boolean {
+  if (!setting) {
+    return false;
+  }
+  if (setting.sourceSheetId !== defaultSourceSheetId) {
+    return true;
+  }
+  if (Object.keys(setting.adjust).length > 0) {
+    return true;
+  }
+  if (Object.keys(setting.cropBySheet).length > 0) {
+    return true;
+  }
+  return false;
 }

@@ -117,6 +117,15 @@ function distanceFromBackground(
 }
 
 /**
+ * 透過画像モード用。フラッドフィルによる背景除去を行わず、元のアルファをそのまま使う
+ * (B-1仕様: 透過画像のときはAIが出力したアルファを信頼し、誤って内部を透明にしない)。
+ * 呼び出し側の配列を書き換えないよう複製を返す。
+ */
+export function keepOriginalAlpha(image: ImageDataLike): ImageDataLike {
+  return { width: image.width, height: image.height, data: new Uint8ClampedArray(image.data) };
+}
+
+/**
  * 画像外周から連結する背景色領域を透明にする。内部の背景色に近い孤立領域(ご飯の白など)は保持する。
  * `featherPx` > 0 の場合、背景との境界付近のアルファを緩やかに変化させる。
  */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { removeBackground } from './alpha';
+import { keepOriginalAlpha, removeBackground } from './alpha';
 import { createSolidImage, fillRect } from '../split/testUtils';
 
 describe('removeBackground', () => {
@@ -56,5 +56,17 @@ describe('removeBackground', () => {
     const image = createSolidImage(10, 10, { r: 250, g: 250, b: 250 });
     const result = removeBackground(image, { r: 255, g: 255, b: 255 }, 20, 0);
     expect(result.data[3]).toBe(0);
+  });
+});
+
+describe('keepOriginalAlpha', () => {
+  it('フラッドフィルを行わず、元のアルファ値をそのまま複製する(透過画像モード用)', () => {
+    const image = createSolidImage(4, 4, { r: 10, g: 20, b: 30, a: 128 });
+    fillRect(image, { x: 1, y: 1, width: 1, height: 1 }, { r: 0, g: 0, b: 0, a: 0 });
+
+    const result = keepOriginalAlpha(image);
+
+    expect(Array.from(result.data)).toEqual(Array.from(image.data));
+    expect(result.data).not.toBe(image.data); // 複製であり、元の配列と同一参照ではない
   });
 });

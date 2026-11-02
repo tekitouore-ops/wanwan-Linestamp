@@ -4,9 +4,12 @@
 
 ```
 ui/        共通UI部品(タブ、ボタン、スライダー、トースト、ドロップゾーン等)
-prompt/    機能1: プロンプト生成(types, buildPrompt, csv, projectFile, promptView)
-split/     機能2前半: 検出・編集・ステップA/B画面(types, mask, gridSplit, editorState,
-           splitView, detectView, previewView, stampCard, adjustPanel, backgroundPicker)
+prompt/    機能1: プロンプト生成(types, layoutConstants, fixedText, buildPrompt, csv,
+           projectFile, promptView)
+split/     機能2前半: 検出・編集・ステップA/B画面・複数シート管理(types, mask, gridSplit,
+           sheetStore, sheetTabs, editorState, splitView, detectView, previewView,
+           stampCard, adjustPanel, sourcePicker, compareDialog, bulkSourceDialog,
+           backgroundPicker)
 export/    機能2後半: 規格化・書き出し(alpha, edge, outline, layout, renderStamp,
            coverImages, validate, zip)
 shared/    共通基盤(lineSpec, imageData, store, dom, file, types)
@@ -22,15 +25,25 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
 `prompt` と `split` は互いに依存しない。`export` は `split` の「結果の型」だけを知っていればよく、
 検出アルゴリズムやUIの実装詳細には依存しない。
 
-## タブ②の画面構成(2026-11-02改訂)
+## タブ②の画面構成(2026-11-02改訂: 複数シート対応)
 
 タブ②は、同じ画面内で行き来する2ステップで構成する(`split/splitView.ts` が両ステップの表示切替を担う)。
 
-- **ステップA**(`split/detectView.ts`): シート画像の読み込み・自動検出・枠編集。「この枠で確定」でステップBへ。
+- **ステップA**(`split/detectView.ts`): シート画像の読み込み(複数可、最大8枚)・自動検出・枠編集。
+  画面上部に`split/sheetTabs.ts`のシートタブを置き、シートの追加・切替・名前変更・削除・並べ替えができる。
+  内部で`split/sheetStore.ts`(`SheetStore = { sheets: Sheet[], images: Map<id, ImageDataLike> }`)を
+  保持し、アクティブなシートの枠編集だけを`EditorState`(既存の単一シート用ロジックをそのまま使う)で行う。
+  シート切替時は、現在のエディタ状態をそのシートの`frames`/`frameWarnings`へ書き戻してから切り替える。
+  「この枠で確定」で全シートぶんをまとめてステップBへ渡す(`editorState.ts: confirmSheets`)。
 - **ステップB**(`split/previewView.ts` が全体レイアウトを担当):
-  - 左: 調整パネル(`split/adjustPanel.ts`、選択中の1枚の個別設定+折りたたみ式の全体設定)
-  - 右: カードグリッド(`split/stampCard.ts` を24個並べる)+上部バー(`split/backgroundPicker.ts` の確認用背景切替、ZIP書き出しボタン)
-  - ステップBから「枠を修正」でステップAへ戻れる。戻っても、枠を変えていないスタンプの個別設定(`ProjectState.stamps`)は保持する。
+  - 左: 調整パネル(`split/adjustPanel.ts`、選択中の1枚の個別設定+採用元選択〈`split/sourcePicker.ts`〉+
+    折りたたみ式の全体設定)。「全シートで比較…」(`split/compareDialog.ts`)、「採用元をまとめて設定…」
+    (`split/bulkSourceDialog.ts`)もここから開く。
+  - 右: カードグリッド(`split/stampCard.ts` を24個並べる。シートが2枚以上なら採用元バッジ表示)+
+    上部バー(`split/backgroundPicker.ts` の確認用背景切替、ZIP書き出しボタン)
+  - ステップBから「枠を修正」でステップAへ戻れる。戻っても、採用元シートの枠を変えていないスタンプの
+    個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す(画像データの
+    再読み込みを避けるため)。
 
 ## データフロー(テキスト図)
 
@@ -46,32 +59,54 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
 [StampRow[]] + [PromptSettings] <--(localStorage自動保存)
 ```
 
-### 機能2: 画像分割・書き出し
+### 機能2: 画像分割・書き出し(複数シート対応)
 
 ```
-[シート画像ファイル] --(imageData.ts: loadImageData)--> [ImageDataLike]
-[ImageDataLike] --(mask.ts: estimateBackground + buildForegroundMask)--> [前景マスク]
+[シート画像ファイル × N] --(imageData.ts: loadImageData)--> [ImageDataLike × N]
+[ImageDataLike] --(mask.ts: detectIsTransparentImage)--> [backgroundMode: 'color' | 'transparent']
+[ImageDataLike] --(mask.ts: estimateBackground + buildForegroundMask
+                    または buildForegroundMaskFromAlpha)--> [前景マスク]
 [前景マスク] --(gridSplit.ts: detectGrid)--> [Rect[24]](自動検出 or 等分割フォールバック)
-[Rect[24]] --(split/editorState.ts: ステップAの枠編集)--> [確定したframes: Rect[24]]
-[frames] --(「この枠で確定」)--> [ProjectState { frames, globalSettings, stamps: [], coverIndex: 0, preview }]
+[Rect[24]] --(split/editorState.ts: ステップAの枠編集、シートごとに独立)--> [確定したSheet.frames: Rect[24]]
+[Sheet[] (id, name, detectSettings, frames, frameWarnings)]
+  --(「この枠で確定」confirmSheets)--> [ProjectState { version:2, sheets, stamps: StampSetting[24],
+                                          globalSettings, coverIndex: 0, preview }]
+  StampSetting = { sourceSheetId, adjust: Partial<StampAdjustFields>, cropBySheet: Record<sheetId, Crop> }
 
-[ImageDataLike] + [Rect] + [GlobalSettings] + [StampAdjust] --(export/renderStamp.ts)--> [規格サイズImageDataLike]
-  内部: crop(切り抜き適用+強制背景) --> alpha.ts(背景透過) --> edge.ts(縁補正)
-        --> layout.ts(配置計算・リサイズ) --> outline.ts(縁フチ、出力解像度で適用)
+[採用元シートのImageDataLike] + [採用元シートのRect] + [GlobalSettings]
+  + [resolveStampAdjust(globalSettings, stampSetting): StampAdjust] + [採用元シートのbackgroundMode]
+  --(export/renderStamp.ts)--> [規格サイズImageDataLike]
+  内部: crop(切り抜き適用+強制背景。背景色モードは不透明、透過画像モードは透明)
+        --> alpha.ts(背景透過。背景色モードはフラッドフィル、透過画像モードは元のアルファを維持)
+        --> edge.ts(縁補正) --> layout.ts(配置計算・リサイズ) --> outline.ts(縁フチ、出力解像度で適用)
 
 [規格サイズImageDataLike] --(imageData.ts: toCanvas/toBlob)--> [PNG Blob]
   (stampCard.tsのプレビュー・容量表示、個別保存に使用)
-[表紙のStampAdjust] --(export/coverImages.ts)--> [main.png用ImageDataLike, tab.png用ImageDataLike]
-[PNG Blob × 24 + main.png + tab.png] --(export/zip.ts: JSZip)--> [ZIPファイル] --> ダウンロード
-[ProjectState] <--(JSON保存/読込。画像本体は含めず、読込時はシート画像の再選択を求める)
+[表紙のStampAdjust・採用元シート] --(export/coverImages.ts)--> [main.png用ImageDataLike, tab.png用ImageDataLike]
+[PNG Blob × 24 + main.png + tab.png (+ sources.txt)] --(export/zip.ts: JSZip)--> [ZIPファイル] --> ダウンロード
+[ProjectState] <--(JSON保存/読込。画像本体は含めず、読込時はシート名で現在読み込み済みのシートと突き合わせる)
 ```
 
 ## 検出アルゴリズム(mask.ts / gridSplit.ts)
 
+### Step 0: 透過画像の判定(mask.ts: detectIsTransparentImage)
+
+画像全体のうち、透明に近い画素(alpha < 250)の割合が20%以上なら「透過画像」と判定し、
+`backgroundMode: 'transparent'` をそのシートの既定値にする(シートごとに手動で上書き可能)。
+
 ### Step A: 前景マスクの作成(mask.ts)
 
+**`backgroundMode: 'color'`(背景色モード)の場合:**
+
 1. **背景色推定**: 画像の外周8px幅の画素の中央値(R/G/Bそれぞれ)を背景色の既定値とする。ステップAの画面でスポイト指定による上書きも可能にする。
-2. **前景判定**: 各画素について、背景色とのRGB各チャンネル差の最大値が「背景判定しきい値」(既定20、1〜80)を超える場合に前景とする。
+2. **前景判定**: 各画素について、背景色とのRGB各チャンネル差の最大値が「背景判定しきい値」(既定20、1〜80)を超える場合に前景とする(`buildForegroundMask`)。
+
+**`backgroundMode: 'transparent'`(透過画像モード)の場合:**
+
+1. 背景色推定は行わない。各画素のアルファ値が「前景判定しきい値」(既定16、1〜80)を超える場合に前景とする(`buildForegroundMaskFromAlpha`)。
+
+**共通:**
+
 3. **ノイズ除去**: 前景マスクに対して連結成分ラベリング(BFS、再帰なし)を行い、面積が最小面積(既定: 画像面積の約0.005%)未満の成分を背景に戻す。
 
 ### Step B: グリッド境界検出(gridSplit.ts、投影法)
@@ -88,11 +123,12 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
 ## 描画パイプライン(export/renderStamp.ts)
 
 プレビュー(`stampCard.ts`)とZIP書き出しは同一の
-`renderStamp(sourceImage, frame: Rect, globalSettings: GlobalSettings, adjust: StampAdjust): ImageDataLike`
-を呼ぶ。
+`renderStamp(sourceImage, frame: Rect, backgroundColor: RGB, globalSettings: GlobalSettings, adjust: StampAdjust, backgroundMode?: BackgroundMode): ImageDataLike`
+を呼ぶ。`sourceImage`・`frame`・`backgroundColor`・`backgroundMode` は、そのスタンプの**採用元シート**
+(`editorState.ts: getSourceSheet`)のものを使う(複数シート対応。4.5参照)。
 
-1. **枠の切り出し**: 検出枠(`Rect`)に `StampAdjust.crop`(上右下左、元画像px)を適用した範囲を決め、縁フチ・縁補正の処理余白を加えて元画像から切り出す。切り出し範囲が元画像の外、または切り抜き後の範囲の外に及ぶ場合、その部分は強制的に背景色として扱い、隣接スタンプの混入を防ぐ。
-2. **背景透過(alpha.ts)**: 切り出し領域の外周(四辺)からBFSで背景色に近い(しきい値以内)画素をキュー方式でフラッドフィルし、連結した領域だけを透明にする。色キー方式(画像全体から背景色相当を一律で抜く)ではないため、キャラクター内部の白い部分(ご飯の白など)は背景と連結していなければ保持される。エッジは指定feather幅(0〜3px)でアルファをなめらかにする。
+1. **枠の切り出し**: 検出枠(`Rect`)に `StampAdjust.crop`(上右下左、元画像px)を適用した範囲を決め、縁フチ・縁補正の処理余白を加えて元画像から切り出す。切り出し範囲が元画像の外、または切り抜き後の範囲の外に及ぶ場合、その部分は強制的に背景として扱い、隣接スタンプの混入を防ぐ(`backgroundMode: 'color'` は不透明な`backgroundColor`、`'transparent'` は透明)。
+2. **背景透過(alpha.ts)**: `backgroundMode: 'color'` のときは、切り出し領域の外周(四辺)からBFSで背景色に近い(しきい値以内)画素をキュー方式でフラッドフィルし、連結した領域だけを透明にする(色キー方式ではないため、キャラクター内部の白い部分は背景と連結していなければ保持される)。エッジは指定feather幅(0〜3px)でアルファをなめらかにする。`backgroundMode: 'transparent'` のときはフラッドフィルを行わず、元画像のアルファ値をそのまま使う(`keepOriginalAlpha`)。
 3. **縁補正(edge.ts)**: `StampAdjust.edgeFix` に応じて、アルファチャンネルをBFS距離ベースで収縮(正の値、背景除去後の白いハロ等を削る)または膨張(負の値、削りすぎを戻す)する。
 4. **配置(layout.ts)**: 出力キャンバス(既定370×320、偶数丸め)から内側余白(既定10px)を引いた安全領域に、切り抜き後の被写体(縁補正込み)が収まる最大倍率を100%とする。そこに `StampAdjust.scale`(既定100%)を掛け、`offsetX`/`offsetY` を加えて配置する。揃えは中央/下揃え。安全領域やキャンバスをはみ出す場合もクランプはしないが、キャンバス外に出て切れる場合はカードに警告を出す。
 5. **縁フチ(outline.ts)**: 配置(リサイズ)後、出力解像度上で被写体のアルファチャンネルを指定半径(既定は全体設定の既定値、0〜16、0でOFF)だけ膨張させ、膨張部分(被写体の外側)を白で塗る。エッジはなめらかに処理する。
@@ -102,9 +138,9 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
 
 ### 表紙画像(export/coverImages.ts)
 
-表紙に設定したスタンプ(`ProjectState.coverIndex`)の `StampAdjust` を引き継ぎ、`renderStamp` と同じパイプラインを
-出力サイズだけ `main.png`(240×240)・`tab.png`(96×74)に差し替えて実行する。内側余白は、通常スタンプと同じ
-比率(出力サイズに対する割合)を使う。
+表紙に設定したスタンプ(`ProjectState.coverIndex`)の採用元シート・`StampAdjust` を引き継ぎ、`renderStamp` と
+同じパイプラインを出力サイズだけ `main.png`(240×240)・`tab.png`(96×74)に差し替えて実行する。内側余白は、
+通常スタンプと同じ比率(出力サイズに対する割合)を使う。
 
 ## パフォーマンス方針
 

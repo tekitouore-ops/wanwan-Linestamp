@@ -3,7 +3,11 @@ import { h } from '../shared/dom';
 export interface DropzoneOptions {
   label: string;
   hint?: string;
-  onFile: (file: File) => void;
+  /** trueのとき、複数ファイルの選択・ドロップを許可し `onFiles` を呼ぶ。既定はfalse(`onFile` のみ)。 */
+  multiple?: boolean;
+  onFile?: (file: File) => void;
+  /** `multiple: true` のときに呼ばれる。画像以外のファイルは除外済み。 */
+  onFiles?: (files: File[]) => void;
   onInvalidFile?: (message: string) => void;
 }
 
@@ -11,7 +15,11 @@ export interface DropzoneOptions {
 export function createDropzone(options: DropzoneOptions): HTMLElement {
   const input = h('input', {
     className: 'dropzone__input',
-    attrs: { type: 'file', accept: 'image/*' },
+    attrs: {
+      type: 'file',
+      accept: 'image/*',
+      ...(options.multiple ? { multiple: 'multiple' } : {}),
+    },
   });
 
   const children: Array<Node | string> = [
@@ -29,15 +37,22 @@ export function createDropzone(options: DropzoneOptions): HTMLElement {
   );
 
   function handleFiles(files: FileList | null): void {
-    const file = files?.[0];
-    if (!file) {
+    const list = Array.from(files ?? []);
+    if (list.length === 0) {
       return;
     }
-    if (!file.type.startsWith('image/')) {
-      options.onInvalidFile?.('画像ファイル(PNG/JPEG/WebPなど)を選択してください。');
+    const validFiles = list.filter((file) => file.type.startsWith('image/'));
+    if (validFiles.length < list.length) {
+      options.onInvalidFile?.('画像ファイル(PNG/JPEG/WebPなど)以外は無視しました。');
+    }
+    if (validFiles.length === 0) {
       return;
     }
-    options.onFile(file);
+    if (options.multiple) {
+      options.onFiles?.(validFiles);
+    } else {
+      options.onFile?.(validFiles[0] as File);
+    }
   }
 
   zone.addEventListener('click', () => input.click());

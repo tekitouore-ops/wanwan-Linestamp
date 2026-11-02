@@ -76,3 +76,17 @@ export function validateOverflowingCells(overflowingIndexes: number[]): Validati
     },
   ];
 }
+
+/** 採用元シートが見つからない(削除済み等)スタンプを警告する。 */
+export function validateMissingSourceSheet(missingIndexes: number[]): ValidationIssue[] {
+  if (missingIndexes.length === 0) {
+    return [];
+  }
+  const numbers = missingIndexes.map((i) => i + 1).join(', ');
+  return [
+    {
+      index: null,
+      message: `採用元のシートが見つからないスタンプがあります(No. ${numbers})。採用元を選び直してください。`,
+    },
+  ];
+}

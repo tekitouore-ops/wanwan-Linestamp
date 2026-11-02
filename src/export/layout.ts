@@ -39,7 +39,11 @@ export function roundToEven(value: number): number {
  * 安全領域や出力キャンバスからはみ出す場合でもクランプはしない(ユーザーが明示的に指定した拡大率のため)が、
  * `isOverflowing` でキャンバス外に出て切れることを呼び出し側に伝える。
  */
-export function computeLayout(subjectWidth: number, subjectHeight: number, settings: LayoutSettings): LayoutResult {
+export function computeLayout(
+  subjectWidth: number,
+  subjectHeight: number,
+  settings: LayoutSettings,
+): LayoutResult {
   const innerWidth = Math.max(1, settings.outputWidth - settings.innerMargin * 2);
   const innerHeight = Math.max(1, settings.outputHeight - settings.innerMargin * 2);
 
@@ -61,7 +65,10 @@ export function computeLayout(subjectWidth: number, subjectHeight: number, setti
       : settings.innerMargin + (innerHeight - drawHeight) / 2 + settings.offsetY;
 
   const isOverflowing =
-    drawX < 0 || drawY < 0 || drawX + drawWidth > settings.outputWidth || drawY + drawHeight > settings.outputHeight;
+    drawX < 0 ||
+    drawY < 0 ||
+    drawX + drawWidth > settings.outputWidth ||
+    drawY + drawHeight > settings.outputHeight;
 
   return {
     scale,

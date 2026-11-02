@@ -13,6 +13,8 @@ const BASE_PARAMS: DetectionParams = {
   minAreaRatio: 0.00001,
   cols: COLS,
   rows: ROWS,
+  backgroundMode: 'color',
+  alphaThreshold: 16,
 };
 
 function buildDriftedSheet(): {
@@ -89,11 +91,34 @@ describe('detectGrid', () => {
       minAreaRatio: 0.00001,
       cols: 1,
       rows: 4,
+      backgroundMode: 'color',
+      alphaThreshold: 16,
       backgroundColor: { r: 255, g: 255, b: 255 },
     });
 
     expect(result.method).toBe('equal');
     expect(result.cells).toHaveLength(4);
+  });
+});
+
+describe('detectGrid: backgroundMode transparent', () => {
+  it('透過背景(alpha=0)の合成画像でも、背景色推定を使わず24個のbboxが求まる', () => {
+    const image = createSolidImage(COLS * CELL_W, ROWS * CELL_H, { r: 0, g: 0, b: 0, a: 0 });
+    for (let r = 0; r < ROWS; r += 1) {
+      for (let c = 0; c < COLS; c += 1) {
+        const rect: Rect = { x: c * CELL_W + 20, y: r * CELL_H + 20, width: 60, height: 60 };
+        fillRect(image, rect, { r: 10, g: 20, b: 30, a: 255 });
+      }
+    }
+
+    const result = detectGrid(image, {
+      ...BASE_PARAMS,
+      backgroundMode: 'transparent',
+      alphaThreshold: 16,
+    });
+
+    expect(result.cells).toHaveLength(24);
+    expect(result.cells.every((cell) => !cell.warnings.includes('empty'))).toBe(true);
   });
 });
 

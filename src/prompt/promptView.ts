@@ -1,16 +1,19 @@
 import { h } from '../shared/dom';
 import { downloadTextFile, openFilePicker } from '../shared/file';
+import { STAMP_COUNT } from '../shared/lineSpec';
 import { createDropzone } from '../ui/dropzone';
 import { showToast } from '../ui/toast';
 import { buildCsvTemplate, parseRows } from './csv';
 import { buildPrompt } from './buildPrompt';
+import { CONTENT_HEADING } from './fixedText';
 import { deserializeProject, serializeProject } from './projectFile';
 import {
+  countFilledRows,
   createEmptyRows,
   DEFAULT_PROMPT_SETTINGS,
+  findEmptyLineRowNumbers,
+  findEmptySituationRowNumbers,
   findIncompleteRowNumbers,
-  FONT_STYLE_PRESETS,
-  type FontStylePreset,
   type PromptSettings,
   type StampRow,
 } from './types';
@@ -90,24 +93,6 @@ function createField(labelText: string, control: HTMLElement, hint?: string): HT
   return h('div', { className: 'field' }, children);
 }
 
-function createCheckboxField(
-  labelText: string,
-  initialChecked: boolean,
-  onChange: (checked: boolean) => void,
-  hint?: string,
-): { element: HTMLElement; input: HTMLInputElement } {
-  const input = h('input', { attrs: { type: 'checkbox' } });
-  input.checked = initialChecked;
-  input.addEventListener('change', () => onChange(input.checked));
-
-  const label = h('label', { className: 'checkbox-field' }, [input, ` ${labelText}`]);
-  const children: Array<Node | string> = [label];
-  if (hint) {
-    children.push(h('p', { className: 'field__hint', text: hint }));
-  }
-  return { element: h('div', { className: 'field field--checkbox' }, children), input };
-}
-
 /** 参照画像の登録セクション(メモリ上のみで保持。ページを閉じると消える)。 */
 function createReferenceImageSection(state: PromptViewState): HTMLElement {
   const previewImg = h('img', {
@@ -167,36 +152,31 @@ interface RowsTableHandle {
   refresh: () => void;
 }
 
-/** 24行の入力表。各セルは `state.rows` を直接書き換える(再描画せず入力中のフォーカスを保つため)。 */
+/** 24行の入力表(No./セリフ/状況)。各セルは `state.rows` を直接書き換える(入力中のフォーカスを保つため)。 */
 function createRowsTable(state: PromptViewState, onChange: () => void): RowsTableHandle {
-  type Column = 'topic' | 'situation' | 'line';
-  const columns: Column[] = ['topic', 'situation', 'line'];
+  type Column = 'line' | 'situation';
+  const columns: Column[] = ['line', 'situation'];
   const inputs: Record<Column, HTMLInputElement>[] = [];
   const tbody = h('tbody');
 
   for (let index = 0; index < state.rows.length; index += 1) {
-    const topicInput = h('input', {
+    const lineInput = h('input', {
       className: 'rows-table__input',
-      attrs: { type: 'text', 'aria-label': `No.${index + 1} お題` },
+      attrs: { type: 'text', 'aria-label': `No.${index + 1} セリフ` },
     });
     const situationInput = h('input', {
       className: 'rows-table__input',
       attrs: { type: 'text', 'aria-label': `No.${index + 1} 状況` },
     });
-    const lineInput = h('input', {
-      className: 'rows-table__input',
-      attrs: { type: 'text', 'aria-label': `No.${index + 1} セリフ` },
-    });
     const rowInputs: Record<Column, HTMLInputElement> = {
-      topic: topicInput,
-      situation: situationInput,
       line: lineInput,
+      situation: situationInput,
     };
 
-    topicInput.addEventListener('input', () => {
+    lineInput.addEventListener('input', () => {
       const row = state.rows[index];
       if (row) {
-        row.topic = topicInput.value;
+        row.line = lineInput.value;
       }
       onChange();
     });
@@ -204,13 +184,6 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
       const row = state.rows[index];
       if (row) {
         row.situation = situationInput.value;
-      }
-      onChange();
-    });
-    lineInput.addEventListener('input', () => {
-      const row = state.rows[index];
-      if (row) {
-        row.line = lineInput.value;
       }
       onChange();
     });
@@ -228,9 +201,8 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
     tbody.append(
       h('tr', {}, [
         h('td', { className: 'rows-table__no', text: String(index + 1) }),
-        h('td', {}, [topicInput]),
-        h('td', {}, [situationInput]),
         h('td', {}, [lineInput]),
+        h('td', {}, [situationInput]),
       ]),
     );
   }
@@ -239,9 +211,8 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
     h('thead', {}, [
       h('tr', {}, [
         h('th', { className: 'rows-table__no', text: 'No.' }),
-        h('th', { text: 'お題' }),
-        h('th', { text: '状況' }),
         h('th', { text: 'セリフ' }),
+        h('th', { text: '状況' }),
       ]),
     ]),
     tbody,
@@ -253,9 +224,8 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
       if (!row) {
         return;
       }
-      rowInputs.topic.value = row.topic;
-      rowInputs.situation.value = row.situation;
       rowInputs.line.value = row.line;
+      rowInputs.situation.value = row.situation;
     });
   }
 
@@ -267,6 +237,7 @@ interface SettingsFormHandle {
   refresh: () => void;
 }
 
+/** 共通設定: キャラクター補足・追加指示(どちらも任意)と、背景透過(固定)の読み取り専用表示。 */
 function createSettingsForm(state: PromptViewState, onChange: () => void): SettingsFormHandle {
   const characterNoteInput = h('textarea', {
     attrs: { rows: '2', placeholder: '例: フランスパンのキャラクター。目は小さな点、手足は丸い' },
@@ -276,59 +247,6 @@ function createSettingsForm(state: PromptViewState, onChange: () => void): Setti
     onChange();
   });
 
-  const fontSelect = h('select', {});
-  FONT_STYLE_PRESETS.forEach((preset) => {
-    fontSelect.append(h('option', { attrs: { value: preset.id }, text: preset.label }));
-  });
-
-  const fontCustomInput = h('input', {
-    attrs: { type: 'text', placeholder: '例: 絵本風の優しいフォント' },
-  });
-  const fontCustomField = createField('書体(自由入力)', fontCustomInput);
-  fontCustomInput.addEventListener('input', () => {
-    state.settings.fontStyleCustom = fontCustomInput.value;
-    onChange();
-  });
-
-  fontSelect.addEventListener('change', () => {
-    // fontSelect の選択肢は FONT_STYLE_PRESETS からのみ生成しているため、この変換は常に安全。
-    const value = fontSelect.value as FontStylePreset;
-    state.settings.fontStylePreset = value;
-    fontCustomField.hidden = value !== 'custom';
-    onChange();
-  });
-
-  const textColorInput = h('input', { attrs: { type: 'color' } });
-  textColorInput.addEventListener('input', () => {
-    state.settings.textColor = textColorInput.value;
-    onChange();
-  });
-
-  const textOutlineField = createCheckboxField(
-    '文字に白い縁取りを付ける',
-    state.settings.textOutline,
-    (checked) => {
-      state.settings.textOutline = checked;
-      onChange();
-    },
-  );
-
-  const backgroundColorInput = h('input', { attrs: { type: 'color' } });
-  backgroundColorInput.addEventListener('input', () => {
-    state.settings.backgroundColor = backgroundColorInput.value;
-    onChange();
-  });
-
-  const whiteOutlineField = createCheckboxField(
-    'プロンプトでも白フチ(ステッカー風の輪郭)の指示を入れる',
-    state.settings.instructWhiteOutlineInPrompt,
-    (checked) => {
-      state.settings.instructWhiteOutlineInPrompt = checked;
-      onChange();
-    },
-    '既定はOFFです。白フチは通常、タブ②の書き出し時にツール側で付与します(背景が白だと検出の邪魔になるため)。',
-  );
-
   const additionalInstructionsInput = h('textarea', {
     attrs: { rows: '2', placeholder: '例: 影は描かない' },
   });
@@ -337,44 +255,80 @@ function createSettingsForm(state: PromptViewState, onChange: () => void): Setti
     onChange();
   });
 
+  const backgroundField = h('div', { className: 'field' }, [
+    h('span', { className: 'field__label', text: '背景' }),
+    h('p', { text: '透過(固定)' }),
+    h('p', {
+      className: 'field__hint',
+      text: 'ChatGPTが透過PNGを返さず、白背景や市松模様の画像が返ることがあります。その場合は、タブ②で背景色モードに切り替えて処理してください。「透過PNGで」と再指示するのも有効です。',
+    }),
+  ]);
+
   function refresh(): void {
     characterNoteInput.value = state.settings.characterNote;
-    fontSelect.value = state.settings.fontStylePreset;
-    fontCustomInput.value = state.settings.fontStyleCustom;
-    fontCustomField.hidden = state.settings.fontStylePreset !== 'custom';
-    textColorInput.value = state.settings.textColor;
-    textOutlineField.input.checked = state.settings.textOutline;
-    backgroundColorInput.value = state.settings.backgroundColor;
-    whiteOutlineField.input.checked = state.settings.instructWhiteOutlineInPrompt;
     additionalInstructionsInput.value = state.settings.additionalInstructions;
   }
   refresh();
 
   const element = h('div', { className: 'settings-form' }, [
     createField('キャラクター補足(任意)', characterNoteInput),
-    createField('文字の書体イメージ', fontSelect),
-    fontCustomField,
-    createField('文字色', textColorInput),
-    textOutlineField.element,
-    createField('背景色', backgroundColorInput),
-    whiteOutlineField.element,
     createField('追加指示(任意)', additionalInstructionsInput),
+    backgroundField,
   ]);
 
   return { element, refresh };
 }
 
+interface SummaryHandle {
+  element: HTMLElement;
+  refresh: () => void;
+}
+
+/** 「プロンプトを生成」直前のサマリー表示: 入力済み行数、セリフ/状況が空の行番号。 */
+function createSummary(state: PromptViewState): SummaryHandle {
+  const filledLine = h('p', {});
+  const emptyLineLine = h('p', { className: 'field__hint' });
+  const emptySituationLine = h('p', { className: 'field__hint' });
+
+  function refresh(): void {
+    const filled = countFilledRows(state.rows);
+    filledLine.textContent = `入力済み: ${filled}/${STAMP_COUNT}行`;
+
+    const emptyLineNumbers = findEmptyLineRowNumbers(state.rows);
+    emptyLineLine.textContent =
+      emptyLineNumbers.length === 0
+        ? 'セリフが空の行: なし'
+        : `セリフが空の行: No. ${emptyLineNumbers.join(', ')}`;
+
+    const emptySituationNumbers = findEmptySituationRowNumbers(state.rows);
+    emptySituationLine.textContent =
+      emptySituationNumbers.length === 0
+        ? '状況が空の行: なし'
+        : `状況が空の行: No. ${emptySituationNumbers.join(', ')}`;
+  }
+  refresh();
+
+  return {
+    element: h('div', { className: 'callout' }, [filledLine, emptyLineLine, emptySituationLine]),
+    refresh,
+  };
+}
+
 function createCsvDialog(onApply: (text: string) => void): { open: () => void } {
   const textarea = h('textarea', {
     className: 'csv-dialog__textarea',
-    attrs: { rows: '14', placeholder: 'お題,状況,セリフ\nおはよう,朝に手を振る,やっほー\n...' },
+    attrs: {
+      rows: '14',
+      placeholder:
+        'セリフ,状況\nやっほー,朝に手を振る\n...\n\nまたは『セリフ』｜状況の形式でも貼り付けられます。',
+    },
   });
 
   const dialog = h('dialog', { className: 'csv-dialog' }, [
-    h('h2', { text: 'CSV/TSVを貼り付け' }),
+    h('h2', { text: '貼り付け' }),
     h('p', {
       className: 'csv-dialog__hint',
-      text: '列順は「お題,状況,セリフ」。ヘッダー行はあってもなくても構いません。24行を超える分は無視し、足りない分は空欄にします。',
+      text: '列順は「セリフ,状況」。ヘッダー行はあってもなくても構いません。『セリフ』｜状況の形式でも自動判定して取り込めます。24行を超える分は無視し、足りない分は空欄にします。',
     }),
     textarea,
     h('div', { className: 'csv-dialog__actions' }, [
@@ -427,11 +381,13 @@ export function createPromptView(): HTMLElement {
     warningBanner.textContent =
       numbers.length === 0
         ? ''
-        : `お題または状況が未入力の行があります(No. ${numbers.join(', ')})。未入力のままでもプロンプトは生成できます。`;
+        : `セリフ・状況がどちらも未入力の行があります(No. ${numbers.join(', ')})。未入力のままでもプロンプトは生成できます。`;
   }
 
+  const summary = createSummary(state);
   function handleChange(): void {
     updateWarningBanner();
+    summary.refresh();
     scheduleSave();
   }
 
@@ -450,20 +406,37 @@ export function createPromptView(): HTMLElement {
     }
   });
 
-  const outputTextarea = h('textarea', {
-    className: 'output__textarea',
+  let lastPrompt = '';
+  const outputFixedTextarea = h('textarea', {
+    className: 'output__textarea output__textarea--fixed',
     attrs: {
       readonly: 'true',
-      rows: '18',
-      'aria-label': '生成されたプロンプト',
+      rows: '12',
+      'aria-label': '生成されたプロンプト(固定文の部分)',
       placeholder: '上の「プロンプトを生成」ボタンを押すと、ここに全文が表示されます。',
+    },
+  });
+  const outputContentTextarea = h('textarea', {
+    className: 'output__textarea output__textarea--content',
+    attrs: {
+      readonly: 'true',
+      rows: '10',
+      'aria-label': '生成されたプロンプト(24行の内容部分)',
     },
   });
   const charCount = h('p', { className: 'output__char-count', text: '0文字' });
 
   function generatePrompt(): void {
     const prompt = buildPrompt(state.rows, state.settings);
-    outputTextarea.value = prompt;
+    lastPrompt = prompt;
+    const splitIndex = prompt.indexOf(CONTENT_HEADING);
+    if (splitIndex === -1) {
+      outputFixedTextarea.value = prompt;
+      outputContentTextarea.value = '';
+    } else {
+      outputFixedTextarea.value = prompt.slice(0, splitIndex).replace(/\n+$/, '');
+      outputContentTextarea.value = prompt.slice(splitIndex);
+    }
     charCount.textContent = `${prompt.length}文字`;
   }
 
@@ -480,11 +453,11 @@ export function createPromptView(): HTMLElement {
     text: 'クリップボードにコピー',
     on: {
       click: () => {
-        if (!outputTextarea.value) {
+        if (!lastPrompt) {
           showToast('先に「プロンプトを生成」を押してください。', 'error');
           return;
         }
-        copyToClipboard(outputTextarea.value).then((ok) => {
+        copyToClipboard(lastPrompt).then((ok) => {
           showToast(
             ok
               ? 'クリップボードにコピーしました。'
@@ -552,7 +525,7 @@ export function createPromptView(): HTMLElement {
   const pasteButton = h('button', {
     className: 'button',
     attrs: { type: 'button' },
-    text: '表に貼り付け(CSV/TSV)',
+    text: '表に貼り付け',
     on: { click: () => csvDialog.open() },
   });
 
@@ -567,7 +540,7 @@ export function createPromptView(): HTMLElement {
     createSectionHeading('参照画像'),
     createReferenceImageSection(state),
 
-    createSectionHeading('24個のお題・状況・セリフ'),
+    createSectionHeading('24個のセリフ・状況'),
     h('div', { className: 'toolbar' }, [pasteButton, templateButton]),
     warningBanner,
     rowsTable.element,
@@ -575,10 +548,11 @@ export function createPromptView(): HTMLElement {
     createSectionHeading('共通設定'),
     settingsForm.element,
 
+    summary.element,
     h('div', { className: 'toolbar' }, [generateButton, saveProjectButton, loadProjectButton]),
 
     createSectionHeading('生成されたプロンプト'),
-    outputTextarea,
+    h('div', { className: 'output__textarea-group' }, [outputFixedTextarea, outputContentTextarea]),
     h('div', { className: 'output__footer' }, [charCount, copyButton]),
   ]);
 }

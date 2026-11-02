@@ -1,20 +1,22 @@
 import { resizeImageDataLike } from '../shared/imageData';
 import type { ImageDataLike, RGB } from '../shared/types';
-import type { GlobalSettings, Rect, StampAdjust } from '../split/types';
-import { removeBackground } from './alpha';
+import type { BackgroundMode, GlobalSettings, Rect, StampAdjust } from '../split/types';
+import { keepOriginalAlpha, removeBackground } from './alpha';
 import { applyEdgeFix } from './edge';
 import { computeLayout, roundToEven, type LayoutResult } from './layout';
 import { addWhiteOutline } from './outline';
 
 /**
  * 範囲(frame)に余白を加えた範囲を元画像から切り出す。
- * 範囲の外側(余白部分)の画素は、隣のスタンプの混入を防ぐため強制的に背景色として扱う。
+ * 範囲の外側(余白部分)の画素は、隣のスタンプの混入を防ぐため強制的に背景として扱う
+ * (`backgroundMode: 'color'` のときは不透明な`backgroundColor`、`'transparent'` のときは透明)。
  */
 export function cropWithForcedBackground(
   source: ImageDataLike,
   frame: Rect,
   marginPx: number,
   backgroundColor: RGB,
+  backgroundMode: BackgroundMode = 'color',
 ): ImageDataLike {
   const cropX = Math.round(frame.x) - marginPx;
   const cropY = Math.round(frame.y) - marginPx;
@@ -22,6 +24,7 @@ export function cropWithForcedBackground(
   const cropHeight = Math.max(1, Math.round(frame.height) + marginPx * 2);
 
   const data = new Uint8ClampedArray(cropWidth * cropHeight * 4);
+  const forcedAlpha = backgroundMode === 'transparent' ? 0 : 255;
 
   for (let y = 0; y < cropHeight; y += 1) {
     const srcY = cropY + y;
@@ -36,7 +39,7 @@ export function cropWithForcedBackground(
         data[i] = backgroundColor.r;
         data[i + 1] = backgroundColor.g;
         data[i + 2] = backgroundColor.b;
-        data[i + 3] = 255;
+        data[i + 3] = forcedAlpha;
       } else {
         const si = (srcY * source.width + srcX) * 4;
         data[i] = source.data[si] ?? backgroundColor.r;
@@ -92,7 +95,11 @@ export function computeEffectiveFrame(frame: Rect, crop: StampAdjust['crop']): R
   };
 }
 
-function computeStampLayout(frame: Rect, adjust: StampAdjust, globalSettings: GlobalSettings): LayoutResult {
+function computeStampLayout(
+  frame: Rect,
+  adjust: StampAdjust,
+  globalSettings: GlobalSettings,
+): LayoutResult {
   const effectiveFrame = computeEffectiveFrame(frame, adjust.crop);
   const outputWidth = Math.max(2, roundToEven(globalSettings.outputWidth));
   const outputHeight = Math.max(2, roundToEven(globalSettings.outputHeight));
@@ -119,14 +126,29 @@ export function renderStamp(
   backgroundColor: RGB,
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
+  backgroundMode: BackgroundMode = 'color',
 ): ImageDataLike {
   const outputWidth = Math.max(2, roundToEven(globalSettings.outputWidth));
   const outputHeight = Math.max(2, roundToEven(globalSettings.outputHeight));
   const effectiveFrame = computeEffectiveFrame(frame, adjust.crop);
 
   const marginPx = globalSettings.featherPx + 2;
-  const cropped = cropWithForcedBackground(sourceImage, effectiveFrame, marginPx, backgroundColor);
-  const matted = removeBackground(cropped, backgroundColor, globalSettings.alphaThreshold, globalSettings.featherPx);
+  const cropped = cropWithForcedBackground(
+    sourceImage,
+    effectiveFrame,
+    marginPx,
+    backgroundColor,
+    backgroundMode,
+  );
+  const matted =
+    backgroundMode === 'transparent'
+      ? keepOriginalAlpha(cropped)
+      : removeBackground(
+          cropped,
+          backgroundColor,
+          globalSettings.alphaThreshold,
+          globalSettings.featherPx,
+        );
   const edgeFixed = applyEdgeFix(matted, adjust.edgeFix);
 
   const layout = computeStampLayout(frame, adjust, globalSettings);
@@ -151,7 +173,11 @@ export interface StampWarnings {
 }
 
 /** 実際に描画せず、解像度不足・はみ出しの警告だけを判定する(カードの警告バッジ用)。 */
-export function computeStampWarnings(frame: Rect, adjust: StampAdjust, globalSettings: GlobalSettings): StampWarnings {
+export function computeStampWarnings(
+  frame: Rect,
+  adjust: StampAdjust,
+  globalSettings: GlobalSettings,
+): StampWarnings {
   const layout = computeStampLayout(frame, adjust, globalSettings);
   return { isUpscaled: layout.isUpscaled, isOverflowing: layout.isOverflowing };
 }
