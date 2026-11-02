@@ -1,38 +1,38 @@
 import { resizeImageDataLike } from '../shared/imageData';
 import type { ImageDataLike, RGB } from '../shared/types';
-import type { BBox } from '../split/types';
+import type { GlobalSettings, Rect, StampAdjust } from '../split/types';
 import { removeBackground } from './alpha';
-import { computeLayout, roundToEven } from './layout';
+import { applyEdgeFix } from './edge';
+import { computeLayout, roundToEven, type LayoutResult } from './layout';
 import { addWhiteOutline } from './outline';
-import type { RenderSettings } from './types';
 
 /**
- * 枠(box)に白フチ分の余白を加えた範囲を元画像から切り出す。
- * 枠の外側(余白部分)の画素は、隣のスタンプの混入を防ぐため強制的に背景色として扱う。
+ * 範囲(frame)に余白を加えた範囲を元画像から切り出す。
+ * 範囲の外側(余白部分)の画素は、隣のスタンプの混入を防ぐため強制的に背景色として扱う。
  */
 export function cropWithForcedBackground(
   source: ImageDataLike,
-  box: BBox,
+  frame: Rect,
   marginPx: number,
   backgroundColor: RGB,
 ): ImageDataLike {
-  const cropX = Math.round(box.x) - marginPx;
-  const cropY = Math.round(box.y) - marginPx;
-  const cropWidth = Math.max(1, Math.round(box.width) + marginPx * 2);
-  const cropHeight = Math.max(1, Math.round(box.height) + marginPx * 2);
+  const cropX = Math.round(frame.x) - marginPx;
+  const cropY = Math.round(frame.y) - marginPx;
+  const cropWidth = Math.max(1, Math.round(frame.width) + marginPx * 2);
+  const cropHeight = Math.max(1, Math.round(frame.height) + marginPx * 2);
 
   const data = new Uint8ClampedArray(cropWidth * cropHeight * 4);
 
   for (let y = 0; y < cropHeight; y += 1) {
     const srcY = cropY + y;
-    const outsideBoxY = y < marginPx || y >= marginPx + box.height;
+    const outsideFrameY = y < marginPx || y >= marginPx + frame.height;
     for (let x = 0; x < cropWidth; x += 1) {
       const srcX = cropX + x;
-      const outsideBoxX = x < marginPx || x >= marginPx + box.width;
+      const outsideFrameX = x < marginPx || x >= marginPx + frame.width;
       const outsideImage = srcX < 0 || srcY < 0 || srcX >= source.width || srcY >= source.height;
       const i = (y * cropWidth + x) * 4;
 
-      if (outsideBoxX || outsideBoxY || outsideImage) {
+      if (outsideFrameX || outsideFrameY || outsideImage) {
         data[i] = backgroundColor.r;
         data[i + 1] = backgroundColor.g;
         data[i + 2] = backgroundColor.b;
@@ -82,45 +82,76 @@ export function compositeOntoCanvas(
   return { width: outputWidth, height: outputHeight, data };
 }
 
+/** 検出枠(frame)に個別設定の切り抜き(crop)を適用した、実際に処理対象とする範囲(元画像px)を求める。 */
+export function computeEffectiveFrame(frame: Rect, crop: StampAdjust['crop']): Rect {
+  return {
+    x: frame.x + crop.left,
+    y: frame.y + crop.top,
+    width: Math.max(1, frame.width - crop.left - crop.right),
+    height: Math.max(1, frame.height - crop.top - crop.bottom),
+  };
+}
+
+function computeStampLayout(frame: Rect, adjust: StampAdjust, globalSettings: GlobalSettings): LayoutResult {
+  const effectiveFrame = computeEffectiveFrame(frame, adjust.crop);
+  const outputWidth = Math.max(2, roundToEven(globalSettings.outputWidth));
+  const outputHeight = Math.max(2, roundToEven(globalSettings.outputHeight));
+  return computeLayout(effectiveFrame.width, effectiveFrame.height, {
+    outputWidth,
+    outputHeight,
+    innerMargin: globalSettings.innerMargin,
+    align: globalSettings.align,
+    allowUpscale: globalSettings.allowUpscale,
+    scalePercent: adjust.scale,
+    offsetX: adjust.offsetX,
+    offsetY: adjust.offsetY,
+  });
+}
+
 /**
- * 1個のスタンプを、元画像・検出枠・設定から規格サイズのImageDataLikeとして描画する。
- * プレビューとZIP書き出しの両方でこの関数を使う。パイプラインの詳細はdocs/architecture.mdを参照。
+ * 1個のスタンプを、元画像・検出枠・全体設定・個別設定(解決済み)から規格サイズの
+ * ImageDataLikeとして描画する。プレビューとZIP書き出しの両方でこの関数を使う。
+ * パイプラインの詳細はdocs/architecture.mdを参照。
  */
 export function renderStamp(
   sourceImage: ImageDataLike,
-  box: BBox,
+  frame: Rect,
   backgroundColor: RGB,
-  settings: RenderSettings,
+  globalSettings: GlobalSettings,
+  adjust: StampAdjust,
 ): ImageDataLike {
-  const outputWidth = Math.max(2, roundToEven(settings.outputWidth));
-  const outputHeight = Math.max(2, roundToEven(settings.outputHeight));
+  const outputWidth = Math.max(2, roundToEven(globalSettings.outputWidth));
+  const outputHeight = Math.max(2, roundToEven(globalSettings.outputHeight));
+  const effectiveFrame = computeEffectiveFrame(frame, adjust.crop);
 
-  const marginPx = settings.outlineWidthPx + settings.featherPx + 2;
-  const cropped = cropWithForcedBackground(sourceImage, box, marginPx, backgroundColor);
-  const matted = removeBackground(
-    cropped,
-    backgroundColor,
-    settings.alphaThreshold,
-    settings.featherPx,
-  );
+  const marginPx = globalSettings.featherPx + 2;
+  const cropped = cropWithForcedBackground(sourceImage, effectiveFrame, marginPx, backgroundColor);
+  const matted = removeBackground(cropped, backgroundColor, globalSettings.alphaThreshold, globalSettings.featherPx);
+  const edgeFixed = applyEdgeFix(matted, adjust.edgeFix);
 
-  const layout = computeLayout(box.width, box.height, { ...settings, outputWidth, outputHeight });
+  const layout = computeStampLayout(frame, adjust, globalSettings);
 
-  const fullDrawWidth = Math.max(1, Math.round(matted.width * layout.scale));
-  const fullDrawHeight = Math.max(1, Math.round(matted.height * layout.scale));
+  const fullDrawWidth = Math.max(1, Math.round(edgeFixed.width * layout.scale));
+  const fullDrawHeight = Math.max(1, Math.round(edgeFixed.height * layout.scale));
   const fullDrawX = Math.round(layout.drawX - marginPx * layout.scale);
   const fullDrawY = Math.round(layout.drawY - marginPx * layout.scale);
 
-  const resized = resizeImageDataLike(matted, fullDrawWidth, fullDrawHeight);
+  const resized = resizeImageDataLike(edgeFixed, fullDrawWidth, fullDrawHeight);
   const composed = compositeOntoCanvas(resized, outputWidth, outputHeight, fullDrawX, fullDrawY);
 
-  return addWhiteOutline(composed, settings.outlineWidthPx);
+  // 縁フチは配置(リサイズ)の後、出力解像度で適用する(docs/decisions.md参照)。
+  return addWhiteOutline(composed, adjust.outline);
 }
 
-/** このスタンプが解像度不足で拡大されすぎていないか(ぼやける可能性があるか)を判定する。 */
-export function isUpscaledTooMuch(box: BBox, settings: RenderSettings): boolean {
-  const outputWidth = Math.max(2, roundToEven(settings.outputWidth));
-  const outputHeight = Math.max(2, roundToEven(settings.outputHeight));
-  return computeLayout(box.width, box.height, { ...settings, outputWidth, outputHeight })
-    .isUpscaled;
+export interface StampWarnings {
+  /** 実効拡大率が1.3倍を超え、解像度不足でぼやける可能性がある場合true。 */
+  isUpscaled: boolean;
+  /** 配置の結果、被写体が出力キャンバスの外にはみ出して切れる場合true。 */
+  isOverflowing: boolean;
+}
+
+/** 実際に描画せず、解像度不足・はみ出しの警告だけを判定する(カードの警告バッジ用)。 */
+export function computeStampWarnings(frame: Rect, adjust: StampAdjust, globalSettings: GlobalSettings): StampWarnings {
+  const layout = computeStampLayout(frame, adjust, globalSettings);
+  return { isUpscaled: layout.isUpscaled, isOverflowing: layout.isOverflowing };
 }

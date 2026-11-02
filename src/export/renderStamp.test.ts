@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { compositeOntoCanvas, cropWithForcedBackground } from './renderStamp';
+import { compositeOntoCanvas, computeEffectiveFrame, computeStampWarnings, cropWithForcedBackground } from './renderStamp';
 import { createSolidImage, fillRect } from '../split/testUtils';
+import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_STAMP_ADJUST } from '../split/types';
 
 describe('cropWithForcedBackground', () => {
   it('枠の範囲+余白を切り出し、枠外(余白部分)は背景色で塗りつぶす', () => {
@@ -66,5 +67,49 @@ describe('compositeOntoCanvas', () => {
     const result = compositeOntoCanvas(image, 10, 10, -2, -2);
     // (0,0)は元画像の(2,2)に相当し、範囲内なので描画される
     expect(result.data[3]).toBe(255);
+  });
+});
+
+describe('computeEffectiveFrame', () => {
+  it('切り抜き量(上右下左)を枠から差し引いた範囲を返す', () => {
+    const frame = { x: 10, y: 20, width: 100, height: 80 };
+    const crop = { top: 5, right: 10, bottom: 15, left: 20 };
+    const effective = computeEffectiveFrame(frame, crop);
+    expect(effective).toEqual({ x: 30, y: 25, width: 70, height: 60 });
+  });
+
+  it('切り抜きがない場合は枠そのまま', () => {
+    const frame = { x: 0, y: 0, width: 50, height: 50 };
+    const effective = computeEffectiveFrame(frame, { top: 0, right: 0, bottom: 0, left: 0 });
+    expect(effective).toEqual(frame);
+  });
+
+  it('切り抜きすぎても最小1pxは保つ', () => {
+    const frame = { x: 0, y: 0, width: 10, height: 10 };
+    const effective = computeEffectiveFrame(frame, { top: 100, right: 100, bottom: 100, left: 100 });
+    expect(effective.width).toBeGreaterThanOrEqual(1);
+    expect(effective.height).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('computeStampWarnings', () => {
+  it('標準設定では警告が出ない', () => {
+    const frame = { x: 0, y: 0, width: 350, height: 300 };
+    const warnings = computeStampWarnings(frame, DEFAULT_STAMP_ADJUST, DEFAULT_GLOBAL_SETTINGS);
+    expect(warnings.isUpscaled).toBe(false);
+    expect(warnings.isOverflowing).toBe(false);
+  });
+
+  it('被写体が小さいと拡大率が高くなり解像度不足警告が出る', () => {
+    const frame = { x: 0, y: 0, width: 50, height: 50 };
+    const warnings = computeStampWarnings(frame, DEFAULT_STAMP_ADJUST, DEFAULT_GLOBAL_SETTINGS);
+    expect(warnings.isUpscaled).toBe(true);
+  });
+
+  it('大きなオフセットを指定すると、はみ出し警告が出る', () => {
+    const frame = { x: 0, y: 0, width: 350, height: 300 };
+    const adjust = { ...DEFAULT_STAMP_ADJUST, offsetX: 100 };
+    const warnings = computeStampWarnings(frame, adjust, DEFAULT_GLOBAL_SETTINGS);
+    expect(warnings.isOverflowing).toBe(true);
   });
 });
