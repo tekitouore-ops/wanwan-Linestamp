@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyAdjustToAll,
-  confirmFrames,
+  applyEditorStateToSheet,
+  confirmSheets,
   createEditorState,
   createEditorStateFromFrames,
   getCell,
   getResolvedStampAdjust,
+  getSourceSheet,
+  getStampFrame,
+  getStampFrameWarnings,
   isStampAdjusted,
   replaceBoxes,
   resetAllCells,
@@ -14,12 +18,24 @@ import {
   selectCell,
   setCoverIndex,
   setPreview,
+  setSourceForAllStamps,
+  setSourceForParity,
+  setSourceForWarningStamps,
+  setStampSource,
   swapCells,
   updateCellBox,
   updateGlobalSettings,
   updateStampAdjust,
+  updateStampCrop,
 } from './editorState';
-import { DEFAULT_GLOBAL_SETTINGS, type DetectionResult, type ProjectState, type Rect } from './types';
+import {
+  DEFAULT_DETECTION_PARAMS,
+  DEFAULT_GLOBAL_SETTINGS,
+  type DetectionResult,
+  type ProjectState,
+  type Rect,
+  type Sheet,
+} from './types';
 
 function makeDetectionResult(): DetectionResult {
   return {
@@ -145,43 +161,109 @@ describe('replaceBoxes', () => {
   });
 });
 
+describe('applyEditorStateToSheet', () => {
+  it('エディタの各セルを番号順に並べ、frames/frameWarningsへ書き戻す', () => {
+    const sheet: Sheet = {
+      id: 's1',
+      name: 'sheet.png',
+      width: 100,
+      height: 100,
+      detectSettings: { ...DEFAULT_DETECTION_PARAMS, cols: 2, rows: 2 },
+      frames: [],
+      frameWarnings: [],
+    };
+    const editor = createEditorState(makeDetectionResult());
+    const updated = applyEditorStateToSheet(sheet, editor);
+    expect(updated.frames).toEqual([
+      { x: 0, y: 0, width: 10, height: 10 },
+      { x: 10, y: 0, width: 10, height: 10 },
+      { x: 20, y: 0, width: 10, height: 10 },
+      { x: 30, y: 0, width: 10, height: 10 },
+    ]);
+    expect(updated.frameWarnings[1]).toEqual(['empty']);
+    expect(updated.frameWarnings[0]).toEqual([]);
+  });
+});
+
 function makeFrames(count: number): Rect[] {
   return Array.from({ length: count }, (_, i) => ({ x: i * 10, y: 0, width: 10, height: 10 }));
 }
 
-describe('confirmFrames', () => {
-  it('初回確定では全スタンプの個別設定を空にする', () => {
-    const state = confirmFrames(null, 'sheet.png', makeFrames(3));
-    expect(state.frames).toEqual(makeFrames(3));
-    expect(state.stamps).toEqual([{}, {}, {}]);
+function makeSheet(id: string, name: string, frames: Rect[]): Sheet {
+  return {
+    id,
+    name,
+    width: 1000,
+    height: 1000,
+    detectSettings: { ...DEFAULT_DETECTION_PARAMS, cols: frames.length, rows: 1 },
+    frames,
+    frameWarnings: frames.map(() => []),
+  };
+}
+
+describe('confirmSheets', () => {
+  it('初回確定では全スタンプの個別設定を空にし、先頭シートを採用元にする', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(3));
+    const state = confirmSheets(null, [sheet]);
+    expect(state.version).toBe(2);
+    expect(state.sheets).toEqual([sheet]);
+    expect(state.stamps).toEqual([
+      { sourceSheetId: 's1', adjust: {}, cropBySheet: {} },
+      { sourceSheetId: 's1', adjust: {}, cropBySheet: {} },
+      { sourceSheetId: 's1', adjust: {}, cropBySheet: {} },
+    ]);
     expect(state.coverIndex).toBe(0);
     expect(state.globalSettings).toEqual(DEFAULT_GLOBAL_SETTINGS);
   });
 
-  it('同じシート・同じ枠のスタンプは個別設定を引き継ぐ', () => {
-    const first = confirmFrames(null, 'sheet.png', makeFrames(3));
+  it('同じシート・同じ枠のスタンプは個別設定(adjust)を引き継ぐ', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(3));
+    const first = confirmSheets(null, [sheet]);
     const withAdjust = updateStampAdjust(first, 1, { scale: 150 });
 
     const frames = makeFrames(3);
-    // index 0 の枠だけ変更する
-    frames[0] = { x: 999, y: 999, width: 10, height: 10 };
-    const second = confirmFrames(withAdjust, 'sheet.png', frames);
+    frames[0] = { x: 999, y: 999, width: 10, height: 10 }; // index0の枠だけ変更する
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withAdjust, [changedSheet]);
 
-    expect(second.stamps[0]).toEqual({}); // 枠が変わったのでリセット
-    expect(second.stamps[1]).toEqual({ scale: 150 }); // 枠が同じなので維持
+    expect(second.stamps[1]?.adjust).toEqual({ scale: 150 }); // 枠が同じなので維持
   });
 
-  it('シート画像が変わった場合はすべての個別設定をリセットする', () => {
-    const first = confirmFrames(null, 'sheet-a.png', makeFrames(2));
-    const withAdjust = updateStampAdjust(first, 0, { scale: 150 });
-    const second = confirmFrames(withAdjust, 'sheet-b.png', makeFrames(2));
-    expect(second.stamps).toEqual([{}, {}]);
+  it('採用元シートの枠が変わったスタンプは、そのシートぶんのcropBySheetだけリセットする', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(2));
+    const first = confirmSheets(null, [sheet]);
+    const withCrop = updateStampCrop(first, 0, { top: 5, right: 0, bottom: 0, left: 0 });
+
+    const frames = makeFrames(2);
+    frames[0] = { x: 999, y: 999, width: 10, height: 10 };
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withCrop, [changedSheet]);
+
+    expect(second.stamps[0]?.cropBySheet).toEqual({});
+  });
+
+  it('採用元シートが削除されていた場合は先頭シートにフォールバックする', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    const first = confirmSheets(null, [sheetA, sheetB]);
+    const withSource = setStampSource(first, 0, 'b');
+
+    const second = confirmSheets(withSource, [sheetA]); // bが削除された
+    expect(second.stamps[0]?.sourceSheetId).toBe('a');
+  });
+
+  it('新しく追加されたシートがあっても既存スタンプの採用元は変更しない', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const first = confirmSheets(null, [sheetA]);
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    const second = confirmSheets(first, [sheetA, sheetB]);
+    expect(second.stamps.every((s) => s.sourceSheetId === 'a')).toBe(true);
   });
 });
 
 describe('ProjectStateの個別設定・全体設定・表紙・プレビュー', () => {
   function makeProjectState(): ProjectState {
-    return confirmFrames(null, 'sheet.png', makeFrames(3));
+    return confirmSheets(null, [makeSheet('s1', 'sheet.png', makeFrames(3))]);
   }
 
   it('getResolvedStampAdjustは未設定項目を全体設定の既定値で補う', () => {
@@ -197,29 +279,88 @@ describe('ProjectStateの個別設定・全体設定・表紙・プレビュー'
     });
   });
 
-  it('updateStampAdjustは指定したスタンプだけ更新する', () => {
+  it('getStampFrame/getStampFrameWarnings/getSourceSheetは採用元シートの値を返す', () => {
+    const state = makeProjectState();
+    expect(getStampFrame(state, 1)).toEqual({ x: 10, y: 0, width: 10, height: 10 });
+    expect(getStampFrameWarnings(state, 1)).toEqual([]);
+    expect(getSourceSheet(state, 1)?.id).toBe('s1');
+  });
+
+  it('updateStampAdjustは指定したスタンプのadjustだけ更新する', () => {
     const state = updateStampAdjust(makeProjectState(), 1, { scale: 120, offsetX: 5 });
-    expect(state.stamps[1]).toEqual({ scale: 120, offsetX: 5 });
-    expect(state.stamps[0]).toEqual({});
+    expect(state.stamps[1]?.adjust).toEqual({ scale: 120, offsetX: 5 });
+    expect(state.stamps[0]?.adjust).toEqual({});
     expect(isStampAdjusted(state, 1)).toBe(true);
     expect(isStampAdjusted(state, 0)).toBe(false);
   });
 
-  it('resetStampAdjustは個別設定を解除する', () => {
-    const state = updateStampAdjust(makeProjectState(), 1, { scale: 120 });
-    const reset = resetStampAdjust(state, 1);
-    expect(reset.stamps[1]).toEqual({});
+  it('updateStampCropは現在の採用元シートぶんのcropBySheetだけ更新する', () => {
+    const state = updateStampCrop(makeProjectState(), 1, { top: 3, right: 0, bottom: 0, left: 0 });
+    expect(state.stamps[1]?.cropBySheet).toEqual({ s1: { top: 3, right: 0, bottom: 0, left: 0 } });
+    expect(isStampAdjusted(state, 1)).toBe(true);
   });
 
-  it('applyAdjustToAllは指定した項目だけ他スタンプへコピーする(cropは対象外)', () => {
+  it('setStampSourceは採用元を切り替え、adjust・cropBySheetは保持する', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    state = updateStampCrop(state, 0, { top: 1, right: 0, bottom: 0, left: 0 });
+    state = setStampSource(state, 0, 'b');
+    expect(state.stamps[0]?.sourceSheetId).toBe('b');
+    expect(state.stamps[0]?.cropBySheet).toEqual({ a: { top: 1, right: 0, bottom: 0, left: 0 } });
+    expect(isStampAdjusted(state, 0)).toBe(true); // 採用元が既定(先頭シート)と異なるため
+
+    const backToA = setStampSource(state, 0, 'a');
+    expect(backToA.stamps[0]?.cropBySheet).toEqual({ a: { top: 1, right: 0, bottom: 0, left: 0 } });
+  });
+
+  it('resetStampAdjustは個別設定を解除し、先頭シート採用に戻す', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    state = updateStampAdjust(state, 1, { scale: 120 });
+    state = setStampSource(state, 1, 'b');
+    const reset = resetStampAdjust(state, 1);
+    expect(reset.stamps[1]).toEqual({ sourceSheetId: 'a', adjust: {}, cropBySheet: {} });
+  });
+
+  it('applyAdjustToAllは指定した項目だけ他スタンプのadjustへコピーする(採用元・cropは対象外)', () => {
     let state = makeProjectState();
-    state = updateStampAdjust(state, 0, { scale: 130, offsetX: 7, crop: { top: 5, right: 0, bottom: 0, left: 0 } });
+    state = updateStampAdjust(state, 0, { scale: 130, offsetX: 7 });
+    state = updateStampCrop(state, 0, { top: 5, right: 0, bottom: 0, left: 0 });
     state = applyAdjustToAll(state, 0, ['scale', 'offsetX']);
 
-    expect(state.stamps[1]).toEqual({ scale: 130, offsetX: 7 });
-    expect(state.stamps[2]).toEqual({ scale: 130, offsetX: 7 });
+    expect(state.stamps[1]?.adjust).toEqual({ scale: 130, offsetX: 7 });
+    expect(state.stamps[2]?.adjust).toEqual({ scale: 130, offsetX: 7 });
+    expect(state.stamps[1]?.cropBySheet).toEqual({});
     // コピー元自身は変更しない
-    expect(state.stamps[0]).toEqual({ scale: 130, offsetX: 7, crop: { top: 5, right: 0, bottom: 0, left: 0 } });
+    expect(state.stamps[0]?.adjust).toEqual({ scale: 130, offsetX: 7 });
+  });
+
+  it('setSourceForAllStampsはすべてのスタンプの採用元を切り替える', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    state = setSourceForAllStamps(state, 'b');
+    expect(state.stamps.every((s) => s.sourceSheetId === 'b')).toBe(true);
+  });
+
+  it('setSourceForParityは奇数番/偶数番だけ採用元を切り替える', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(4));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(4));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    state = setSourceForParity(state, 'b', 'odd');
+    expect(state.stamps.map((s) => s.sourceSheetId)).toEqual(['b', 'a', 'b', 'a']);
+  });
+
+  it('setSourceForWarningStampsは現在の採用元に警告のあるスタンプだけ切り替える', () => {
+    const framesA = makeFrames(2);
+    const sheetA: Sheet = { ...makeSheet('a', 'a.png', framesA), frameWarnings: [['empty'], []] };
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    state = setSourceForWarningStamps(state, 'b');
+    expect(state.stamps[0]?.sourceSheetId).toBe('b'); // 警告ありだったので切り替わる
+    expect(state.stamps[1]?.sourceSheetId).toBe('a'); // 警告なしなので維持
   });
 
   it('setCoverIndexは表紙番号を更新する', () => {
