@@ -1,7 +1,7 @@
 import type { ImageDataLike, RGB } from '../shared/types';
 import { buildForegroundMask, estimateBackgroundColor, removeNoise } from './mask';
 import type {
-  BBox,
+  Rect,
   CellWarning,
   DetectedCell,
   DetectionMethod,
@@ -127,7 +127,7 @@ function computeCellBox(
   mask: Uint8Array,
   width: number,
   region: CellRegion,
-): { box: BBox; hasForeground: boolean } {
+): { box: Rect; hasForeground: boolean } {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -168,7 +168,7 @@ const SIZE_OUTLIER_MIN_RATIO = 0.25;
 const SIZE_OUTLIER_MAX_RATIO = 3;
 
 function computeWarnings(
-  box: BBox,
+  box: Rect,
   region: CellRegion,
   hasForeground: boolean,
   medianArea: number,
@@ -217,7 +217,7 @@ function buildCells(
   rows: number,
 ): DetectedCell[] {
   const regions: CellRegion[] = [];
-  const computed: Array<{ box: BBox; hasForeground: boolean }> = [];
+  const computed: Array<{ box: Rect; hasForeground: boolean }> = [];
 
   for (let r = 0; r < rows; r += 1) {
     const top = rowBoundaries[r] ?? 0;
@@ -334,7 +334,7 @@ export function detectGridEqualDivision(
 }
 
 /** 指定した矩形内の前景画素にぴったり合わせたbboxを求める(「内容にフィット」機能用)。 */
-export function fitBoxToContent(image: ImageDataLike, region: BBox, params: DetectionParams): BBox {
+export function fitBoxToContent(image: ImageDataLike, region: Rect, params: DetectionParams): Rect {
   const backgroundColor = params.backgroundColor ?? estimateBackgroundColor(image);
   const mask = buildForegroundMask(image, backgroundColor, params.backgroundThreshold);
   const cellRegion: CellRegion = {

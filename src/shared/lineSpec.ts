@@ -31,12 +31,13 @@ export const DEFAULT_SHEET_IMAGE_SIZE = { width: 1536, height: 1024 } as const;
 /** 検出用に縮小するシート画像の最大辺の目安(px)。これを超える入力は縮小コピーで検出処理する。 */
 export const DETECTION_MAX_DIMENSION_PX = 4096;
 
-/**
- * メイン画像・タブ画像は本ツールの対象外(docs/backlog.md参照)。
- * 将来拡張時の参考値としてのみ保持する。
- */
+/** メイン画像(スタンプ一覧のサムネイル)。表紙に設定したスタンプから生成する。 */
 export const MAIN_IMAGE_SIZE = { width: 240, height: 240 } as const;
+export const MAIN_IMAGE_FILE_NAME = 'main.png';
+
+/** タブ画像(スタンプ選択時のタブアイコン)。表紙に設定したスタンプから生成する。 */
 export const TAB_IMAGE_SIZE = { width: 96, height: 74 } as const;
+export const TAB_IMAGE_FILE_NAME = 'tab.png';
 
 /**
  * 1-indexedの番号(1〜24)から、LINE規格のファイル名(01.png〜24.png)を生成する。
