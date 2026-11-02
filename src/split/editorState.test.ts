@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createEditorState,
   getCell,
+  replaceBoxes,
   resetAllCells,
   resetCell,
   selectCell,
@@ -98,5 +99,24 @@ describe('resetCell / resetAllCells', () => {
     expect(state.selectedIndex).toBeNull();
     expect(state.cells.every((cell) => !cell.isManuallyEdited)).toBe(true);
     expect(getCell(state, 0)?.box).toEqual({ x: 0, y: 0, width: 10, height: 10 });
+  });
+});
+
+describe('replaceBoxes', () => {
+  it('指定したインデックスの枠だけ置き換え、手動編集マークを付ける', () => {
+    const state = replaceBoxes(createEditorState(makeDetectionResult()), {
+      2: { x: 1, y: 2, width: 3, height: 4 },
+    });
+    expect(getCell(state, 2)?.box).toEqual({ x: 1, y: 2, width: 3, height: 4 });
+    expect(getCell(state, 2)?.isManuallyEdited).toBe(true);
+    expect(getCell(state, 2)?.warnings).toEqual([]);
+  });
+
+  it('指定しなかったインデックスの枠は変更しない', () => {
+    const state = replaceBoxes(createEditorState(makeDetectionResult()), {
+      2: { x: 1, y: 2, width: 3, height: 4 },
+    });
+    expect(getCell(state, 0)?.box).toEqual({ x: 0, y: 0, width: 10, height: 10 });
+    expect(getCell(state, 0)?.isManuallyEdited).toBe(false);
   });
 });

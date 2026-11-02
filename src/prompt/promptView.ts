@@ -1,4 +1,5 @@
 import { h } from '../shared/dom';
+import { downloadTextFile, openFilePicker } from '../shared/file';
 import { createDropzone } from '../ui/dropzone';
 import { showToast } from '../ui/toast';
 import { buildCsvTemplate, parseRows } from './csv';
@@ -56,30 +57,6 @@ function persistState(rows: StampRow[], settings: PromptSettings): void {
   } catch {
     // 容量超過・プライベートモード等は自動保存の失敗として無視する(補助機能のため)。
   }
-}
-
-function downloadTextFile(filename: string, content: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = h('a', { attrs: { href: url, download: filename } });
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function openFilePicker(accept: string): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = h('input', { attrs: { type: 'file', accept } });
-    input.addEventListener(
-      'change',
-      () => {
-        resolve(input.files?.[0] ?? null);
-      },
-      { once: true },
-    );
-    input.click();
-  });
 }
 
 async function copyToClipboard(text: string): Promise<boolean> {

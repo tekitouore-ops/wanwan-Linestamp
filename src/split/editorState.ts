@@ -94,3 +94,20 @@ export function resetAllCells(state: EditorState): EditorState {
     selectedIndex: null,
   };
 }
+
+/**
+ * 保存しておいた設定JSONなどから、複数の枠をまとめて置き換える。
+ * `boxes` に含まれないインデックスの枠はそのまま維持する。
+ */
+export function replaceBoxes(
+  state: EditorState,
+  boxes: Partial<Record<number, BBox>>,
+): EditorState {
+  return {
+    ...state,
+    cells: state.cells.map((cell) => {
+      const box = boxes[cell.index];
+      return box ? { ...cell, box, warnings: [], isManuallyEdited: true } : cell;
+    }),
+  };
+}

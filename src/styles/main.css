@@ -529,3 +529,122 @@ body {
   color: #fff;
   border-color: var(--color-accent);
 }
+
+.button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- タブ②: 全体設定・プレビュー・書き出し(Phase 4) ---- */
+
+.export-section {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.export-section[hidden] {
+  display: none;
+}
+
+.override-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-border);
+}
+
+.override-sliders[hidden] {
+  display: none;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+}
+
+.preview-grid--checker {
+  background: repeating-conic-gradient(#e9e6dd 0% 25%, #fff 0% 50%) 50% / 20px 20px;
+}
+
+.preview-grid--white {
+  background: #ffffff;
+}
+
+.preview-grid--dark {
+  background: #1e1e1e;
+}
+
+.preview-grid--chat {
+  background: #8fc4bb;
+}
+
+.preview-thumb {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.preview-thumb:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.preview-thumb__canvas-wrapper {
+  position: relative;
+  line-height: 0;
+}
+
+.preview-thumb__canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+}
+
+.preview-thumb__badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: #d9382b;
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.preview-thumb__badge[hidden] {
+  display: none;
+}
+
+.preview-thumb__override-mark {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.preview-thumb__override-mark[hidden] {
+  display: none;
+}
+
+.preview-thumb__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 0.75rem;
+}
+
+.preview-thumb__footer .button--text {
+  font-size: 0.72rem;
+}

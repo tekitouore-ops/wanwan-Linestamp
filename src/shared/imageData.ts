@@ -51,11 +51,61 @@ export function downscaleImageData(image: ImageDataLike, maxDimension: number): 
   const scale = maxDimension / longestSide;
   const targetWidth = Math.max(1, Math.round(image.width * scale));
   const targetHeight = Math.max(1, Math.round(image.height * scale));
+  return resizeImageDataLike(image, targetWidth, targetHeight);
+}
 
-  const source = imageDataLikeToCanvas(image);
-  const ctx = createContext2D(targetWidth, targetHeight);
+function resizeCanvasOnce(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+): HTMLCanvasElement {
+  const ctx = createContext2D(width, height);
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
-  const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+  ctx.drawImage(source, 0, 0, width, height);
+  return ctx.canvas;
+}
+
+/**
+ * 高品質補間でImageDataLikeを指定サイズに変換する。大きな縮小(1/2未満への縮小)は、
+ * 1回の`drawImage`では品質が落ちやすいため、2倍ずつの段階的な縮小を繰り返してから最終サイズに合わせる。
+ */
+export function resizeImageDataLike(
+  image: ImageDataLike,
+  targetWidth: number,
+  targetHeight: number,
+): ImageDataLike {
+  const width = Math.max(1, Math.round(targetWidth));
+  const height = Math.max(1, Math.round(targetHeight));
+
+  let current: CanvasImageSource = imageDataLikeToCanvas(image);
+  let currentWidth = image.width;
+  let currentHeight = image.height;
+
+  while (currentWidth > width * 2 || currentHeight > height * 2) {
+    const nextWidth = Math.max(width, Math.round(currentWidth / 2));
+    const nextHeight = Math.max(height, Math.round(currentHeight / 2));
+    current = resizeCanvasOnce(current, nextWidth, nextHeight);
+    currentWidth = nextWidth;
+    currentHeight = nextHeight;
+  }
+
+  const ctx = createContext2D(width, height);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(current, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
   return { width: imageData.width, height: imageData.height, data: imageData.data };
+}
+
+/** ImageDataLikeをPNG形式のBlobに変換する(ZIP書き出し・個別ダウンロードで使う)。 */
+export function imageDataLikeToPngBlob(image: ImageDataLike): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const canvas = imageDataLikeToCanvas(image);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(blob);
+      } else {
+        reject(new Error('PNGへの変換に失敗しました。'));
+      }
+    }, 'image/png');
+  });
 }
