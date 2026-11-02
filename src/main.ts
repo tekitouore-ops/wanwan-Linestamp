@@ -2,13 +2,10 @@ import './styles/main.css';
 import { createPromptView } from './prompt/promptView';
 import { h } from './shared/dom';
 import { Store } from './shared/store';
+import { createSplitView } from './split/splitView';
 import { createTabs, type TabDefinition } from './ui/tabs';
 
 type TabId = 'prompt' | 'split';
-
-function renderPlaceholder(message: string): HTMLElement {
-  return h('div', { className: 'placeholder', text: message });
-}
 
 const tabs: Array<TabDefinition<TabId>> = [
   {
@@ -19,7 +16,7 @@ const tabs: Array<TabDefinition<TabId>> = [
   {
     id: 'split',
     label: '② 画像分割・書き出し',
-    render: () => renderPlaceholder('準備中: 画像分割・書き出しタブ(Phase 3〜4で実装予定)'),
+    render: () => createSplitView(),
   },
 ];
 

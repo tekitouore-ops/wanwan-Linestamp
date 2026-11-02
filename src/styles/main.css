@@ -439,3 +439,93 @@ body {
 .toast--error {
   background: #8a2f1f;
 }
+
+/* ---- タブ②: 検出・エディタ ---- */
+
+.split-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 20px;
+  align-items: start;
+}
+
+.split-layout[hidden] {
+  display: none;
+}
+
+.split-canvas-wrapper {
+  min-width: 0;
+}
+
+.split-canvas {
+  width: 100%;
+  max-width: 900px;
+  aspect-ratio: 3 / 2;
+  display: block;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: repeating-conic-gradient(#e9e6dd 0% 25%, #fff 0% 50%) 50% / 20px 20px;
+  touch-action: none;
+  cursor: default;
+}
+
+.split-canvas:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.split-method-label {
+  margin: 8px 0 0;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.split-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.split-section-heading {
+  margin: 14px 0 2px;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.split-section-heading:first-child {
+  margin-top: 0;
+}
+
+.slider-field__value {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.selection-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.88rem;
+}
+
+.warning-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.warning-list__empty {
+  list-style: none;
+  margin-left: -18px;
+}
+
+.button--active {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
