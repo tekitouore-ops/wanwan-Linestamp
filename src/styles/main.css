@@ -837,6 +837,11 @@ body {
   outline-offset: 1px;
 }
 
+.bg-picker__custom {
+  position: relative;
+  display: inline-block;
+}
+
 .bg-picker__color-input {
   width: 40px;
   height: 32px;
@@ -844,6 +849,16 @@ body {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: #fff;
+}
+
+/* プリセットの丸(白等)と見分けるための目印(追加修正指示書 項目13)。 */
+.bg-picker__custom-badge {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  font-size: 0.7rem;
+  line-height: 1;
+  pointer-events: none;
 }
 
 .bg-picker__hex-input {

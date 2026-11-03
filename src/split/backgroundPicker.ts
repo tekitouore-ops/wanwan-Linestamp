@@ -48,8 +48,25 @@ export function createBackgroundPicker(
     button.style.backgroundColor = PRESET_COLORS[i]?.hex ?? '#ffffff';
   });
 
-  const colorInput = h('input', { className: 'bg-picker__color-input', attrs: { type: 'color' } });
+  const colorInput = h('input', {
+    className: 'bg-picker__color-input',
+    attrs: {
+      type: 'color',
+      'aria-label': 'カスタム色を選ぶ',
+      title: 'カスタム色を選ぶ',
+    },
+  });
   colorInput.addEventListener('input', () => update({ mode: 'color', color: colorInput.value }));
+  // プリセットの丸(白等)と見分けられるよう、🎨の目印を添える(追加修正指示書 項目13)。
+  const colorInputBadge = h('span', {
+    className: 'bg-picker__custom-badge',
+    attrs: { 'aria-hidden': 'true' },
+    text: '🎨',
+  });
+  const colorInputGroup = h('div', { className: 'bg-picker__custom' }, [
+    colorInput,
+    colorInputBadge,
+  ]);
 
   const hexInput = h('input', {
     className: 'bg-picker__hex-input',
@@ -77,7 +94,12 @@ export function createBackgroundPicker(
   syncUI();
 
   const element = h('div', { className: 'bg-picker' }, [
-    h('div', { className: 'toolbar' }, [checkerButton, ...presetButtons, colorInput, hexInput]),
+    h('div', { className: 'toolbar' }, [
+      checkerButton,
+      ...presetButtons,
+      colorInputGroup,
+      hexInput,
+    ]),
     h('p', {
       className: 'field__hint',
       text: '確認用の表示のみです。書き出す画像は常に透過のままです。',
