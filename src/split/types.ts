@@ -195,24 +195,41 @@ export function resolveStampAdjust(
 }
 
 /**
- * 個別設定が変更済みか(カードのドット表示用)。`adjust`/`cropBySheet` に値があるか、
- * `sourceSheetId` が既定(そのスタンプの初期の採用元シート)と異なる場合にtrueとする。
+ * 個別設定が変更済みか(カードのドット表示用)。採用元(`sourceSheetId`)が既定と異なるだけでは
+ * 変更済みとしない(採用元はS1/S2等のバッジで見分けられるため。追加修正指示書 項目11の不具合修正)。
+ * `adjust` は、キーがあっても値が初期値(`outline`はグローバル設定の既定値)と同じなら変更済みに
+ * 含めない。`cropBySheet` は、現在の採用元シートぶんの値が実際に非ゼロの場合だけ変更済みとする
+ * (`resolveStampAdjust` が使う値と同じ基準)。
  */
-export function isStampOverridden(
+export function isStampModified(
   setting: StampSetting | undefined,
-  defaultSourceSheetId: string,
+  globalSettings: GlobalSettings,
 ): boolean {
   if (!setting) {
     return false;
   }
-  if (setting.sourceSheetId !== defaultSourceSheetId) {
+
+  const adjustDefaults: StampAdjustFields = {
+    edgeFix: DEFAULT_STAMP_ADJUST.edgeFix,
+    outline: globalSettings.defaultOutline,
+    scale: DEFAULT_STAMP_ADJUST.scale,
+    offsetX: DEFAULT_STAMP_ADJUST.offsetX,
+    offsetY: DEFAULT_STAMP_ADJUST.offsetY,
+  };
+  const adjustKeys = Object.keys(setting.adjust) as Array<keyof StampAdjustFields>;
+  if (adjustKeys.some((key) => setting.adjust[key] !== adjustDefaults[key])) {
     return true;
   }
-  if (Object.keys(setting.adjust).length > 0) {
+
+  const activeCrop = setting.cropBySheet[setting.sourceSheetId] ?? DEFAULT_CROP;
+  if (
+    activeCrop.top !== 0 ||
+    activeCrop.right !== 0 ||
+    activeCrop.bottom !== 0 ||
+    activeCrop.left !== 0
+  ) {
     return true;
   }
-  if (Object.keys(setting.cropBySheet).length > 0) {
-    return true;
-  }
+
   return false;
 }
