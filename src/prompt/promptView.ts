@@ -18,7 +18,9 @@ import {
   type StampRow,
 } from './types';
 
-const STORAGE_KEY = 'wanwan-linestamp:prompt-state:v1';
+const STORAGE_KEY = 'wanwan-linestamp:prompt-state:v2';
+/** 旧キー(保存データがPROJECT_FILE_VERSION 1だった頃のもの)。読み込み時に見つかれば新キーへ移行し、削除する。 */
+const LEGACY_STORAGE_KEY = 'wanwan-linestamp:prompt-state:v1';
 
 interface ReferenceImageState {
   fileName: string;
@@ -41,14 +43,30 @@ function debounce(fn: () => void, delayMs: number): () => void {
   };
 }
 
+/**
+ * localStorageから自動保存データを読み込む。新キー(v2)がなければ、旧キー(v1)からの移行を試みる
+ * (セリフ・状況だけ引き継ぎ、新キーへ保存し直して旧キーを削除する。修正指示書 項目6参照)。
+ */
 function loadPersistedState(): { rows: StampRow[]; settings: PromptSettings } | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+    if (raw) {
+      const result = deserializeProject(raw);
+      return result.ok ? { rows: result.rows, settings: result.settings } : null;
+    }
+
+    const legacyRaw = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!legacyRaw) {
       return null;
     }
-    const result = deserializeProject(raw);
-    return result.ok ? { rows: result.rows, settings: result.settings } : null;
+    const legacyResult = deserializeProject(legacyRaw);
+    if (!legacyResult.ok) {
+      window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+      return null;
+    }
+    persistState(legacyResult.rows, legacyResult.settings);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+    return { rows: legacyResult.rows, settings: legacyResult.settings };
   } catch {
     return null;
   }
@@ -228,6 +246,8 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
       rowInputs.situation.value = row.situation;
     });
   }
+  // 初期表示(localStorageからの復元・v1からの移行分を含む)を入力欄へ反映する。
+  refresh();
 
   return { element: h('div', { className: 'rows-table-wrapper' }, [table]), refresh };
 }

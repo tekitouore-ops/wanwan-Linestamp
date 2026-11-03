@@ -72,6 +72,8 @@ function normalizeSettings(value: unknown): PromptSettings {
  * プロジェクトJSONを読み込む。ファイル境界からの入力のため、型を保証せず1項目ずつ検証する。
  * v1(旧お題・書体・文字色等を含む形式)のデータも、rows/settingsとも壊れずに移行できる
  * (お題・書体・文字色・縁取り・白フチ・背景色は読み捨て、セリフと状況だけ引き継ぐ)。
+ * `version`がこのツールの対応バージョン(2)より大きい場合は、未対応の新しい形式とみなして
+ * 取り込まない(将来のバージョンで読み込み専用の項目が増えた場合に、黙ってデータを失わないため)。
  */
 export function deserializeProject(json: string): DeserializeResult {
   let parsed: unknown;
@@ -83,6 +85,14 @@ export function deserializeProject(json: string): DeserializeResult {
 
   if (!isRecord(parsed) || !('rows' in parsed)) {
     return { ok: false, error: 'プロジェクトファイルの形式が正しくありません。' };
+  }
+
+  const version = typeof parsed.version === 'number' ? parsed.version : 1;
+  if (version > PROJECT_FILE_VERSION) {
+    return {
+      ok: false,
+      error: `新しいバージョンのファイルです(version ${version})。このツールを最新版に更新してからお試しください。`,
+    };
   }
 
   return {

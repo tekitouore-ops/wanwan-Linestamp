@@ -98,4 +98,22 @@ describe('serializeProject / deserializeProject', () => {
       expect(result.settings.characterNote).toBe(DEFAULT_PROMPT_SETTINGS.characterNote);
     }
   });
+
+  it('versionフィールドがない場合はv1相当として読み込む', () => {
+    const result = deserializeProject(
+      JSON.stringify({ rows: [{ topic: 'お題', situation: '状況', line: 'セリフ' }] }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.rows[0]).toEqual({ line: 'セリフ', situation: '状況' });
+    }
+  });
+
+  it('対応バージョンより新しいversionは、案内を付けて取り込まない', () => {
+    const result = deserializeProject(JSON.stringify({ version: 99, rows: [] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('新しいバージョン');
+    }
+  });
 });
