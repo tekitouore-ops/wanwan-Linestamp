@@ -176,11 +176,27 @@ export function applyEditorStateToSheet(sheet: Sheet, editor: EditorState): Shee
 // ステップB: プロジェクト状態(複数シート・採用元・個別設定・表紙・プレビュー設定)
 // ============================================================
 
-function rectEquals(a: Rect | undefined, b: Rect | undefined): boolean {
+/**
+ * 枠を直したあと、cropを保持するかどうかの判定に使う許容量(px)。修正指示書 項目3参照:
+ * 「ほぼ同じ枠」とみなせる程度の微調整(手ぶれ程度のドラッグ、1px単位のリサイズ等)では、
+ * 検出枠に対する相対値であるcropを消さずに保持する。
+ */
+export const CROP_KEEP_TOLERANCE_PX = 5;
+
+/**
+ * 2つの枠が、x・y・右端(x+width)・下端(y+height)のすべてにおいて`tolerancePx`以内の
+ * 変化に収まっているか判定する。1辺でも超えていれば「変わった」とみなす。
+ */
+function isRectWithinTolerance(a: Rect | undefined, b: Rect | undefined, tolerancePx: number): boolean {
   if (!a || !b) {
     return false;
   }
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  return (
+    Math.abs(a.x - b.x) <= tolerancePx &&
+    Math.abs(a.y - b.y) <= tolerancePx &&
+    Math.abs(a.x + a.width - (b.x + b.width)) <= tolerancePx &&
+    Math.abs(a.y + a.height - (b.y + b.height)) <= tolerancePx
+  );
 }
 
 /**
@@ -209,7 +225,11 @@ export function confirmSheets(previous: ProjectState | null, sheets: Sheet[]): P
 
     const previousSheet = previous?.sheets.find((sheet) => sheet.id === sourceSheetId);
     const currentSheet = sheets.find((sheet) => sheet.id === sourceSheetId);
-    const frameChanged = !rectEquals(previousSheet?.frames[index], currentSheet?.frames[index]);
+    const frameChanged = !isRectWithinTolerance(
+      previousSheet?.frames[index],
+      currentSheet?.frames[index],
+      CROP_KEEP_TOLERANCE_PX,
+    );
 
     const cropBySheet = { ...previousSetting.cropBySheet };
     if (frameChanged) {

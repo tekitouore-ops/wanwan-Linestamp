@@ -242,6 +242,65 @@ describe('confirmSheets', () => {
     expect(second.stamps[0]?.cropBySheet).toEqual({});
   });
 
+  it('枠の変化がx・y・右端・下端すべて5px以内(=4px)ならcropを保持する', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(1));
+    const first = confirmSheets(null, [sheet]);
+    const withCrop = updateStampCrop(first, 0, { top: 3, right: 0, bottom: 0, left: 0 });
+
+    // 元は{x:0,y:0,width:10,height:10}。x,y,右端,下端をすべて4pxだけ動かす(右端・下端は幅/高さも変える)。
+    const frames = [{ x: 4, y: 4, width: 10, height: 10 }]; // 右端14(+4)・下端14(+4)
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withCrop, [changedSheet]);
+
+    expect(second.stamps[0]?.cropBySheet).toEqual({ s1: { top: 3, right: 0, bottom: 0, left: 0 } });
+  });
+
+  it('1辺でも6px変化すればcropをリセットする', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(1));
+    const first = confirmSheets(null, [sheet]);
+    const withCrop = updateStampCrop(first, 0, { top: 3, right: 0, bottom: 0, left: 0 });
+
+    // xだけ6px動かす(他の辺は変化なし)。
+    const frames = [{ x: 6, y: 0, width: 4, height: 10 }]; // 右端は0→10のまま維持(width調整済み)
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withCrop, [changedSheet]);
+
+    expect(second.stamps[0]?.cropBySheet).toEqual({});
+  });
+
+  it('右端・下端だけが5pxを超えて動いた場合もcropをリセットする(x,yは不動)', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(1));
+    const first = confirmSheets(null, [sheet]);
+    const withCrop = updateStampCrop(first, 0, { top: 3, right: 0, bottom: 0, left: 0 });
+
+    // x,yは0のまま、widthだけ+6(右端が+6動く)。
+    const frames = [{ x: 0, y: 0, width: 16, height: 10 }];
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withCrop, [changedSheet]);
+
+    expect(second.stamps[0]?.cropBySheet).toEqual({});
+  });
+
+  it('複数シートがある場合、cropの保持/リセットはシートごとに別々に判定される', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    // 番号0はシートA採用、番号1はシートB採用にし、それぞれcropを設定する。
+    state = updateStampCrop(state, 0, { top: 2, right: 0, bottom: 0, left: 0 });
+    state = setStampSource(state, 1, 'b');
+    state = updateStampCrop(state, 1, { top: 4, right: 0, bottom: 0, left: 0 });
+
+    // シートAの枠は4pxだけ動かす(保持される)、シートBの枠は999pxの大変化(リセットされる)。
+    const framesA = makeFrames(2);
+    framesA[0] = { x: 4, y: 0, width: 10, height: 10 };
+    const framesB = makeFrames(2);
+    framesB[1] = { x: 999, y: 999, width: 10, height: 10 };
+    const confirmed = confirmSheets(state, [makeSheet('a', 'a.png', framesA), makeSheet('b', 'b.png', framesB)]);
+
+    expect(confirmed.stamps[0]?.cropBySheet).toEqual({ a: { top: 2, right: 0, bottom: 0, left: 0 } });
+    expect(confirmed.stamps[1]?.cropBySheet).toEqual({});
+  });
+
   it('採用元シートが削除されていた場合は先頭シートにフォールバックする', () => {
     const sheetA = makeSheet('a', 'a.png', makeFrames(2));
     const sheetB = makeSheet('b', 'b.png', makeFrames(2));

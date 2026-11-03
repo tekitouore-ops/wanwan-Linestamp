@@ -143,4 +143,19 @@ describe('computeStampWarnings', () => {
     const warnings = computeStampWarnings(frame, adjust, DEFAULT_GLOBAL_SETTINGS);
     expect(warnings.isOverflowing).toBe(true);
   });
+
+  it('被写体自体は安全領域にぴったり収まっていても、縁フチがキャンバス外まで膨張すればはみ出し警告が出る', () => {
+    // 内側余白(既定10px)ぴったりに被写体を配置した状態(frame=安全領域と同サイズ)。
+    const frame = { x: 0, y: 0, width: 350, height: 300 };
+    const adjust = { ...DEFAULT_STAMP_ADJUST, outline: 12 };
+    const warnings = computeStampWarnings(frame, adjust, DEFAULT_GLOBAL_SETTINGS);
+    expect(warnings.isOverflowing).toBe(true);
+  });
+
+  it('縁フチが内側余白の範囲内に収まる程度なら、はみ出し警告は出ない', () => {
+    const frame = { x: 0, y: 0, width: 350, height: 300 };
+    const adjust = { ...DEFAULT_STAMP_ADJUST, outline: 2 };
+    const warnings = computeStampWarnings(frame, adjust, DEFAULT_GLOBAL_SETTINGS);
+    expect(warnings.isOverflowing).toBe(false);
+  });
 });

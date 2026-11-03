@@ -4,6 +4,7 @@ import { createSliderField, type SliderField } from '../ui/slider';
 import {
   DEFAULT_GLOBAL_SETTINGS,
   DEFAULT_STAMP_ADJUST,
+  type BackgroundMode,
   type CropAmount,
   type GlobalSettings,
   type Rect,
@@ -20,6 +21,13 @@ export interface AdjustPanelCallbacks {
   onGlobalSettingsChange: (patch: Partial<GlobalSettings>) => void;
   onCompareSources: (index: number) => void;
   onBulkSource: () => void;
+  /**
+   * スライダー・数値入力・チェックボックス等での操作が1手ぶん確定したときに呼ばれる
+   * (Undo履歴へのコミット用。修正指示書 項目4参照)。スライダーはドラッグ中は呼ばれず、
+   * ドラッグ終了時に1回だけ呼ばれる。ボタン操作(リセット・表紙設定等)は呼び出し側で
+   * 対応するコールバック(`onResetStamp`等)のあとに直接コミットするため、ここでは呼ばない。
+   */
+  onCommit: () => void;
 }
 
 export interface ShowForStampParams {
@@ -31,6 +39,8 @@ export interface ShowForStampParams {
   sourcePickerElement: HTMLElement;
   /** シートが2枚以上あるか(「全シートで比較」「採用元をまとめて設定」ボタンの表示切替に使う)。 */
   hasMultipleSheets: boolean;
+  /** 採用元シートの背景の扱い(背景色モードで縁フチ=0のときのヒント表示に使う。修正指示書 項目8参照)。 */
+  backgroundMode: BackgroundMode;
 }
 
 export interface AdjustPanelHandle {
@@ -60,6 +70,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.outputWidth,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.outputWidth,
     onChange: (v) => callbacks.onGlobalSettingsChange({ outputWidth: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const outputHeightSlider = createSliderField({
     label: '出力高さ',
@@ -70,6 +81,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.outputHeight,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.outputHeight,
     onChange: (v) => callbacks.onGlobalSettingsChange({ outputHeight: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const innerMarginSlider = createSliderField({
     label: '内側余白',
@@ -80,6 +92,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.innerMargin,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.innerMargin,
     onChange: (v) => callbacks.onGlobalSettingsChange({ innerMargin: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const defaultOutlineSlider = createSliderField({
     label: '縁フチの既定値',
@@ -90,6 +103,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.defaultOutline,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.defaultOutline,
     onChange: (v) => callbacks.onGlobalSettingsChange({ defaultOutline: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const alphaThresholdSlider = createSliderField({
     label: '透過しきい値',
@@ -99,6 +113,11 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.alphaThreshold,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.alphaThreshold,
     onChange: (v) => callbacks.onGlobalSettingsChange({ alphaThreshold: v }),
+    onCommit: () => callbacks.onCommit(),
+  });
+  const alphaThresholdHint = h('p', {
+    className: 'field__hint',
+    text: '背景色モードで、AIが描いた白フチが背景と一緒に消えてしまう場合は、この値を下げると消えにくくなります。',
   });
   const featherSlider = createSliderField({
     label: 'エッジのぼかし',
@@ -109,6 +128,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.featherPx,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.featherPx,
     onChange: (v) => callbacks.onGlobalSettingsChange({ featherPx: v }),
+    onCommit: () => callbacks.onCommit(),
   });
 
   const alignSelect = h('select', {});
@@ -121,6 +141,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     callbacks.onGlobalSettingsChange({
       align: alignSelect.value === 'bottom' ? 'bottom' : 'center',
     });
+    callbacks.onCommit();
   });
   const alignField = h('div', { className: 'field' }, [
     h('label', { className: 'field__label', text: '揃え' }),
@@ -131,6 +152,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
   allowUpscaleCheckbox.checked = DEFAULT_GLOBAL_SETTINGS.allowUpscale;
   allowUpscaleCheckbox.addEventListener('change', () => {
     callbacks.onGlobalSettingsChange({ allowUpscale: allowUpscaleCheckbox.checked });
+    callbacks.onCommit();
   });
   const allowUpscaleField = h('div', { className: 'field field--checkbox' }, [
     h('label', { className: 'checkbox-field' }, [
@@ -146,6 +168,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     innerMarginSlider.element,
     defaultOutlineSlider.element,
     alphaThresholdSlider.element,
+    alphaThresholdHint,
     featherSlider.element,
     alignField,
     allowUpscaleField,
@@ -237,7 +260,21 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.edgeFix,
       defaultValue: DEFAULT_STAMP_ADJUST.edgeFix,
       onChange: (v) => callbacks.onAdjustChange(index, { edgeFix: v }),
+      onCommit: () => callbacks.onCommit(),
     });
+    const outlineHint = h('p', {
+      className: 'field__hint',
+      text: 'AIが生成画像にすでに白フチを描いている場合は0〜2px程度にしてください。それ以上だとフチが二重になります。',
+    });
+    const outlineBackgroundModeHint = h('p', {
+      className: 'field__hint field__hint--warning',
+      text: '推奨: 縁フチを付けてください(背景色モードでは、縁フチ=0のままだとAIが描いた白フチが背景と一緒に透過処理で消えやすくなります)。',
+    });
+    function updateOutlineBackgroundModeHint(outlineValue: number): void {
+      outlineBackgroundModeHint.hidden = !(params.backgroundMode === 'color' && outlineValue === 0);
+    }
+    updateOutlineBackgroundModeHint(resolved.outline);
+
     const outlineSlider = createSliderField({
       label: '縁フチ',
       unit: 'px',
@@ -246,7 +283,11 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       step: 1,
       value: resolved.outline,
       defaultValue: currentGlobalSettings.defaultOutline,
-      onChange: (v) => callbacks.onAdjustChange(index, { outline: v }),
+      onChange: (v) => {
+        callbacks.onAdjustChange(index, { outline: v });
+        updateOutlineBackgroundModeHint(v);
+      },
+      onCommit: () => callbacks.onCommit(),
     });
 
     const cropTopMax = cropMax(frame.height);
@@ -269,6 +310,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
         value,
         defaultValue: 0,
         onChange,
+        onCommit: () => callbacks.onCommit(),
       });
     }
 
@@ -297,6 +339,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.scale,
       defaultValue: DEFAULT_STAMP_ADJUST.scale,
       onChange: (v) => callbacks.onAdjustChange(index, { scale: v }),
+      onCommit: () => callbacks.onCommit(),
     });
     const offsetXSlider = createSliderField({
       label: '横位置',
@@ -307,6 +350,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.offsetX,
       defaultValue: DEFAULT_STAMP_ADJUST.offsetX,
       onChange: (v) => callbacks.onAdjustChange(index, { offsetX: v }),
+      onCommit: () => callbacks.onCommit(),
     });
     const offsetYSlider = createSliderField({
       label: '縦位置',
@@ -317,6 +361,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.offsetY,
       defaultValue: DEFAULT_STAMP_ADJUST.offsetY,
       onChange: (v) => callbacks.onAdjustChange(index, { offsetY: v }),
+      onCommit: () => callbacks.onCommit(),
     });
 
     const coverButton = h('button', {
@@ -358,6 +403,8 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       h('h4', { className: 'split-section-heading', text: '補正' }),
       edgeFixSlider.element,
       outlineSlider.element,
+      outlineHint,
+      outlineBackgroundModeHint,
       h('h4', { className: 'split-section-heading', text: '切り抜き' }),
       cropTopSlider.element,
       cropRightSlider.element,

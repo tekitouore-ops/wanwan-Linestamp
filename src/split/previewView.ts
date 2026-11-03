@@ -9,9 +9,9 @@ import {
   type ValidationIssue,
 } from '../export/validate';
 import { buildFullZipFromBlobs, formatZipFileName } from '../export/zip';
-import { h } from '../shared/dom';
+import { h, isEditableEventTarget } from '../shared/dom';
 import { downloadBlob, downloadTextFile, openFilePicker } from '../shared/file';
-import { imageDataLikeToPngBlob } from '../shared/imageData';
+import { imageDataLikeToPngBlob, loadImageDataFromFile } from '../shared/imageData';
 import {
   MAIN_IMAGE_FILE_NAME,
   MAIN_IMAGE_SIZE,
@@ -30,6 +30,15 @@ import { createBackgroundPicker } from './backgroundPicker';
 import { createBulkSourceDialog, type BulkSourceMode } from './bulkSourceDialog';
 import { createCompareDialog, type CompareOption } from './compareDialog';
 import {
+  canRedo,
+  canUndo,
+  createHistory,
+  push as pushHistory,
+  redo as redoHistory,
+  undo as undoHistory,
+  type History,
+} from './history';
+import {
   applyAdjustToAll,
   getResolvedStampAdjust,
   getSourceSheet,
@@ -46,7 +55,14 @@ import {
   updateStampAdjust,
   updateStampCrop,
 } from './editorState';
-import { getSheetImage, type SheetStore } from './sheetStore';
+import { createSheetAssignDialog } from './sheetAssignDialog';
+import {
+  countUnassignedSheets,
+  matchSheetsByNameAndSize,
+  remapProjectIds,
+  type SheetAssignmentRow,
+} from './sheetMatch';
+import { addSheet, getSheetImage, type SheetStore } from './sheetStore';
 import { createSourcePicker, type SourceOption } from './sourcePicker';
 import { createStampCard, type StampCardHandle } from './stampCard';
 import {
@@ -360,6 +376,11 @@ export function createPreviewView(
   let store: SheetStore = { sheets: [], images: new Map() };
   let project: ProjectState | null = null;
   let selectedIndex = 0;
+  /**
+   * Undo/Redo履歴(修正指示書 項目4)。`ProjectState`のスナップショット方式で、画像データは
+   * 含まない。シート一式が変わる操作(`setProject`・設定JSON読込)では作り直す(履歴を引き継がない)。
+   */
+  let history: History<ProjectState> | null = null;
 
   const cards: StampCardHandle[] = [];
   const cardsGrid = h('div', { className: 'preview-grid preview-grid--checker' });
@@ -397,6 +418,7 @@ export function createPreviewView(
       return;
     }
     refreshSourcePicker(index);
+    const sourceSheet = getSourceSheet(project, index);
     adjustPanel.showForStamp({
       index,
       frame,
@@ -404,6 +426,7 @@ export function createPreviewView(
       isCover: index === project.coverIndex,
       sourcePickerElement: sourcePicker.element,
       hasMultipleSheets: project.sheets.length > 1,
+      backgroundMode: sourceSheet?.detectSettings.backgroundMode ?? 'color',
     });
   }
 
@@ -541,11 +564,93 @@ export function createPreviewView(
     }
   }
 
+  const undoButton = h('button', {
+    className: 'button',
+    attrs: { type: 'button' },
+    text: '元に戻す',
+    on: { click: () => handleUndo() },
+  });
+  const redoButton = h('button', {
+    className: 'button',
+    attrs: { type: 'button' },
+    text: 'やり直す',
+    on: { click: () => handleRedo() },
+  });
+
+  function updateHistoryButtons(): void {
+    undoButton.toggleAttribute('disabled', !(history && canUndo(history)));
+    redoButton.toggleAttribute('disabled', !(history && canRedo(history)));
+  }
+  updateHistoryButtons();
+
+  /** 現在の`project`を1手として履歴へコミットする(スライダーはドラッグ終了時、ボタンは押下時に呼ぶ)。 */
+  function commitHistory(): void {
+    if (!project || !history) {
+      return;
+    }
+    history = pushHistory(history, project);
+    updateHistoryButtons();
+  }
+
+  /** シート一式が変わる操作(枠確定・設定JSON読込)のあと、履歴を作り直す(過去は引き継がない)。 */
+  function resetHistory(): void {
+    if (project) {
+      history = createHistory(project);
+    }
+    updateHistoryButtons();
+  }
+
+  function restoreProjectFromHistory(next: ProjectState): void {
+    project = next;
+    adjustPanel.setGlobalSettings(project.globalSettings);
+    backgroundPicker.setValue(project.preview);
+    applyPreviewBackground(project.preview);
+    renderAllCards();
+    selectCardAt(Math.min(selectedIndex, STAMP_COUNT - 1));
+  }
+
+  function handleUndo(): void {
+    if (!history || !canUndo(history)) {
+      return;
+    }
+    history = undoHistory(history);
+    restoreProjectFromHistory(history.present);
+    updateHistoryButtons();
+  }
+
+  function handleRedo(): void {
+    if (!history || !canRedo(history)) {
+      return;
+    }
+    history = redoHistory(history);
+    restoreProjectFromHistory(history.present);
+    updateHistoryButtons();
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (element.hidden || isEditableEventTarget(event.target)) {
+      return;
+    }
+    const key = event.key.toLowerCase();
+    const withModifier = event.ctrlKey || event.metaKey;
+    if (!withModifier || (key !== 'z' && key !== 'y')) {
+      return;
+    }
+    if (key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      handleUndo();
+    } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+      event.preventDefault();
+      handleRedo();
+    }
+  });
+
   const sourcePicker = createSourcePicker({
     onSelect: (sheetId) => {
       if (!project) return;
       project = setStampSource(project, selectedIndex, sheetId);
       refreshStampPanels(selectedIndex);
+      commitHistory();
     },
   });
 
@@ -554,6 +659,7 @@ export function createPreviewView(
       if (!project) return;
       project = setStampSource(project, selectedIndex, sheetId);
       refreshStampPanels(selectedIndex);
+      commitHistory();
     },
   });
 
@@ -571,6 +677,7 @@ export function createPreviewView(
       renderAllCards();
       refreshStampPanels(selectedIndex);
       showToast('採用元をまとめて設定しました。');
+      commitHistory();
     },
   });
 
@@ -585,16 +692,19 @@ export function createPreviewView(
       project = updateStampCrop(project, index, crop);
       renderCard(index);
     },
+    onCommit: () => commitHistory(),
     onResetStamp: (index) => {
       if (!project) return;
       project = resetStampAdjust(project, index);
       refreshStampPanels(index);
+      commitHistory();
     },
     onApplyToAll: (index, fields) => {
       if (!project) return;
       project = applyAdjustToAll(project, index, fields);
       renderAllCards();
       showToast('他の23枚に適用しました。');
+      commitHistory();
     },
     onSetCover: (index) => {
       if (!project) return;
@@ -604,6 +714,7 @@ export function createPreviewView(
       cards[index]?.setCover(true);
       refreshCoverPreview();
       selectCardAt(index);
+      commitHistory();
     },
     onGlobalSettingsChange: (patch) => {
       if (!project) return;
@@ -941,6 +1052,96 @@ export function createPreviewView(
     },
   });
 
+  /**
+   * 保存シート→現在のシートidの対応づけ(`idMap`、「割り当てない」はエントリなし)を使って、
+   * 読み込んだProjectStateのidを現在のセッションのものへ付け替えて(`remapProjectIds`)反映する。
+   */
+  function finalizeSettingsLoad(parsed: ProjectState, idMap: Map<string, string>): void {
+    project = remapProjectIds(parsed, idMap, store.sheets);
+    adjustPanel.setGlobalSettings(project.globalSettings);
+    backgroundPicker.setValue(project.preview);
+    applyPreviewBackground(project.preview);
+    renderAllCards();
+    selectCardAt(Math.min(selectedIndex, STAMP_COUNT - 1));
+    resetHistory();
+
+    const unassignedCount = countUnassignedSheets(parsed, idMap);
+    showToast(
+      unassignedCount > 0
+        ? `検出枠・設定を読み込みました(画像が割り当てられなかったシートが${unassignedCount}件あります)。`
+        : '検出枠・設定を読み込みました。',
+    );
+  }
+
+  let pendingParsedProject: ProjectState | null = null;
+  /** ダイアログに表示中の行に対応する、保存シートのid一覧(「画像を追加で読み込む」後の再提案に使う)。 */
+  let pendingRowSavedIds: string[] = [];
+
+  const sheetAssignDialog = createSheetAssignDialog({
+    onApply: (assignments) => {
+      if (!pendingParsedProject) {
+        return;
+      }
+      const idMap = new Map<string, string>();
+      // まず自動対応づけできた分(名前・サイズ一致)を反映する。
+      const autoMatch = matchSheetsByNameAndSize(pendingParsedProject.sheets, store.sheets);
+      Object.entries(autoMatch.idMap).forEach(([savedId, currentId]) =>
+        idMap.set(savedId, currentId),
+      );
+      // ダイアログでの手動割り当てを上書きする(「割り当てない」はエントリを作らない)。
+      Object.entries(assignments).forEach(([savedId, currentId]) => {
+        if (currentId) {
+          idMap.set(savedId, currentId);
+        } else {
+          idMap.delete(savedId);
+        }
+      });
+      finalizeSettingsLoad(pendingParsedProject, idMap);
+      pendingParsedProject = null;
+      pendingRowSavedIds = [];
+    },
+    onAddMoreImages: (files) => {
+      void (async () => {
+        for (const file of files) {
+          try {
+            const image = await loadImageDataFromFile(file);
+            const added = addSheet(store, file.name, image, {
+              ...DEFAULT_DETECTION_PARAMS,
+              cols: 6,
+              rows: 4,
+            });
+            store = added.store;
+          } catch {
+            showToast(`${file.name} の読み込みに失敗しました。`, 'error');
+          }
+        }
+        const currentParsed = pendingParsedProject;
+        if (currentParsed) {
+          // 表示中の行(保存シート)それぞれについて、画像追加後の状況で候補を再計算する。
+          // 名前・サイズの両方が一致するようになった行は、その現在シートを既定の選択にする。
+          const fullMatch = matchSheetsByNameAndSize(currentParsed.sheets, store.sheets);
+          const updatedRows = pendingRowSavedIds.flatMap((savedId): SheetAssignmentRow[] => {
+            const savedSheet = currentParsed.sheets.find((sheet) => sheet.id === savedId);
+            if (!savedSheet) {
+              return [];
+            }
+            const exactMatchId = fullMatch.idMap[savedId];
+            if (exactMatchId) {
+              return [{ savedSheet, suggestedSheetId: exactMatchId, sizeMismatch: false }];
+            }
+            const stillPending = fullMatch.needsAssignment.find(
+              (row) => row.savedSheet.id === savedId,
+            );
+            return [
+              stillPending ?? { savedSheet, suggestedSheetId: undefined, sizeMismatch: false },
+            ];
+          });
+          sheetAssignDialog.refreshCandidates(updatedRows, store.sheets);
+        }
+      })();
+    },
+  });
+
   const loadSettingsButton = h('button', {
     className: 'button',
     attrs: { type: 'button' },
@@ -965,54 +1166,15 @@ export function createPreviewView(
               );
               return;
             }
-            const currentNames = new Map(store.sheets.map((sheet) => [sheet.name, sheet.id]));
-            const missingNames = parsed.sheets
-              .filter((sheet) => !currentNames.has(sheet.name))
-              .map((sheet) => sheet.name);
-            if (missingNames.length > 0) {
-              showToast(
-                `同じ名前のシートが見つかりません: ${missingNames.join(', ')}。ステップAで同じ画像を読み込んでから、もう一度お試しください。`,
-                'error',
-              );
+
+            const match = matchSheetsByNameAndSize(parsed.sheets, store.sheets);
+            if (match.needsAssignment.length === 0) {
+              finalizeSettingsLoad(parsed, new Map(Object.entries(match.idMap)));
               return;
             }
-            // 保存時のsheetIdは現在のセッションのものと異なる場合があるため、名前で現在のidへ付け替える。
-            const idMap = new Map(
-              parsed.sheets.map((sheet) => [sheet.id, currentNames.get(sheet.name) as string]),
-            );
-            const remappedSheets = parsed.sheets.map((sheet) => {
-              const currentSheet = store.sheets.find((s) => s.id === idMap.get(sheet.id));
-              return currentSheet
-                ? {
-                    ...sheet,
-                    id: currentSheet.id,
-                    width: currentSheet.width,
-                    height: currentSheet.height,
-                  }
-                : sheet;
-            });
-            const remapped: ProjectState = {
-              ...parsed,
-              sheets: remappedSheets,
-              stamps: parsed.stamps.map((setting) => ({
-                sourceSheetId: idMap.get(setting.sourceSheetId) ?? setting.sourceSheetId,
-                adjust: setting.adjust,
-                cropBySheet: Object.fromEntries(
-                  Object.entries(setting.cropBySheet).map(([sheetId, crop]) => [
-                    idMap.get(sheetId) ?? sheetId,
-                    crop,
-                  ]),
-                ),
-              })),
-            };
-
-            project = remapped;
-            adjustPanel.setGlobalSettings(project.globalSettings);
-            backgroundPicker.setValue(project.preview);
-            applyPreviewBackground(project.preview);
-            renderAllCards();
-            selectCardAt(Math.min(selectedIndex, STAMP_COUNT - 1));
-            showToast('検出枠・設定を読み込みました。');
+            pendingParsedProject = parsed;
+            pendingRowSavedIds = match.needsAssignment.map((row) => row.savedSheet.id);
+            sheetAssignDialog.open(match.needsAssignment, store.sheets);
           } catch {
             showToast('設定ファイルの読み込みに失敗しました。', 'error');
           }
@@ -1037,10 +1199,11 @@ export function createPreviewView(
     applyPreviewBackground(project.preview);
     renderAllCards();
     selectCardAt(isNewSheetSet ? 0 : Math.min(selectedIndex, STAMP_COUNT - 1));
+    resetHistory();
   }
 
   const topBar = h('div', { className: 'preview-topbar' }, [
-    h('div', { className: 'toolbar' }, [fixFramesButton]),
+    h('div', { className: 'toolbar' }, [fixFramesButton, undoButton, redoButton]),
     backgroundPicker.element,
     coverPreviewGroup,
     includeTabImageField,
