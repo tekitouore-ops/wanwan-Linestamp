@@ -626,6 +626,10 @@ body {
   margin-left: -18px;
 }
 
+.warning-list__caution {
+  color: #8a6d00;
+}
+
 .button--active {
   background: var(--color-accent);
   color: #fff;
@@ -755,11 +759,20 @@ body {
   background: var(--color-accent);
 }
 
-.stamp-card__badge--warning {
+.stamp-card__badge--warning,
+.stamp-card__badge--caution {
   left: auto;
   top: 4px;
   right: 4px;
+}
+
+.stamp-card__badge--warning {
   background: #d9382b;
+}
+
+.stamp-card__badge--caution {
+  background: #c9a000;
+  color: #221a00;
 }
 
 .stamp-card__badge--source {

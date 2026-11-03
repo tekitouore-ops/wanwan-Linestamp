@@ -1,3 +1,5 @@
+import { UPSCALE_CAUTION_THRESHOLD, UPSCALE_WARNING_THRESHOLD } from '../shared/lineSpec';
+
 export interface ValidationIssue {
   /** 0始まりのスタンプ番号。スタンプに紐づかない問題(メイン/タブ画像、全体の問題)はnull。 */
   index: number | null;
@@ -75,6 +77,36 @@ export function validateOverflowingCells(overflowingIndexes: number[]): Validati
       message: `配置がキャンバスからはみ出しているスタンプがあります(No. ${numbers})。拡大率や位置を確認してください。`,
     },
   ];
+}
+
+/**
+ * 解像度不足が「警告」段階(実効拡大率1.6倍超)のスタンプを番号つきで警告する。
+ * 「注意」段階(1.3〜1.6倍)は本当に危ない警告が埋もれないよう、ここには含めず
+ * `summarizeUpscaleCaution`で件数のみ案内する(追加修正指示書 項目12)。
+ */
+export function validateUpscaleWarning(warningIndexes: number[]): ValidationIssue[] {
+  if (warningIndexes.length === 0) {
+    return [];
+  }
+  const numbers = warningIndexes.map((i) => i + 1).join(', ');
+  return [
+    {
+      index: null,
+      message: `解像度不足の警告があります(No. ${numbers})。拡大率を下げるか、元画像の解像度を上げてください。`,
+    },
+  ];
+}
+
+/**
+ * 解像度不足が「注意」段階(実効拡大率1.3〜1.6倍)のスタンプの件数だけを案内する文言を返す
+ * (`ValidationIssue`ではないため、書き出し確認ダイアログの件数カウントには含めない)。
+ * 対象がなければnull。
+ */
+export function summarizeUpscaleCaution(cautionCount: number): string | null {
+  if (cautionCount === 0) {
+    return null;
+  }
+  return `注意: ${cautionCount}枚が${UPSCALE_CAUTION_THRESHOLD}〜${UPSCALE_WARNING_THRESHOLD}倍に拡大されます。`;
 }
 
 /** 採用元シートが見つからない(削除済み等)スタンプを警告する。 */

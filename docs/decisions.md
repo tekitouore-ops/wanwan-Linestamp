@@ -323,6 +323,23 @@ B-6仕様は「ファイル名・サイズでの自動対応づけ+手動割り�
 対して検出を行い`store`へ結果を書き込む関数に切り出し、複数ファイル追加時はループ内で追加した
 シートすべてに対してこれを呼ぶように変更した。
 
+## 2026-11-03: 解像度不足警告を2段階化し、確認ダイアログの件数カウントから「注意」を除外(追加修正指示書 項目12)
+
+生成シートの1マス(約256px)を規格サイズ(最大370×320)へ拡大すると、ほぼ全スタンプが旧しきい値
+(1.3倍)を超えてしまい、本当に危険な拡大(1.6倍超など)が赤い⚠の中に埋もれていた。しきい値を
+`shared/lineSpec.ts`に`UPSCALE_CAUTION_THRESHOLD`(1.3)・`UPSCALE_WARNING_THRESHOLD`(1.6)として
+定数化し、`export/layout.ts`の`isUpscaled`(真偽値)を廃止して`renderStamp.ts`の
+`computeUpscaleLevel(scale)`(`'none' | 'caution' | 'warning'`)に置き換えた。実効拡大率
+(`scale`)自体もStampWarningsに含め、カードのツールチップに「約1.4倍に拡大」のように表示する。
+
+- **層の分離**: `layout.ts`はしきい値を持たず`scale`だけを返す(警告段階の判定は呼び出し側の責務にした)。
+  しきい値を1箇所(lineSpec.ts)に保つという既存方針(修正指示書 項目5)と一致させるため。
+- **書き出し前検証**: 警告(1.6倍超)は`validateUpscaleWarning`で番号つきのValidationIssueとして
+  `allIssues`に含め、確認ダイアログの「○件の警告があります」のカウント対象にする。注意(1.3〜1.6倍)は
+  `summarizeUpscaleCaution`で件数のみの文言を返す、ValidationIssueではない別の戻り値にして、
+  `allIssues`(確認ダイアログの件数)には含めない。表示自体は`exportIssueList`に別枠
+  (`warning-list__caution`)で出すため、情報として見えなくはならない。
+
 ## 2026-11-03: 「個別設定あり」ドットが採用元切替だけで付く不具合を修正(追加修正指示書 項目11)
 
 `types.ts: isStampOverridden`は、`sourceSheetId`が既定(先頭シート)と異なるだけでtrueを返し、

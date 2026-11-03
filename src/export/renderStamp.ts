@@ -1,4 +1,5 @@
 import { resizeImageDataLike } from '../shared/imageData';
+import { UPSCALE_CAUTION_THRESHOLD, UPSCALE_WARNING_THRESHOLD } from '../shared/lineSpec';
 import type { ImageDataLike, RGB } from '../shared/types';
 import type { BackgroundMode, GlobalSettings, Rect, StampAdjust } from '../split/types';
 import { keepOriginalAlpha, removeBackground } from './alpha';
@@ -165,9 +166,25 @@ export function renderStamp(
   return addWhiteOutline(composed, adjust.outline);
 }
 
+/** 解像度不足(拡大しすぎ)の警告段階。`none`は警告なし。 */
+export type UpscaleLevel = 'none' | 'caution' | 'warning';
+
+/** 実効拡大率(`scale`、1.0=等倍)から警告段階を判定する(追加修正指示書 項目12)。 */
+export function computeUpscaleLevel(scale: number): UpscaleLevel {
+  if (scale > UPSCALE_WARNING_THRESHOLD) {
+    return 'warning';
+  }
+  if (scale > UPSCALE_CAUTION_THRESHOLD) {
+    return 'caution';
+  }
+  return 'none';
+}
+
 export interface StampWarnings {
-  /** 実効拡大率が1.3倍を超え、解像度不足でぼやける可能性がある場合true。 */
-  isUpscaled: boolean;
+  /** 解像度不足の警告段階(注意/警告の2段階、追加修正指示書 項目12)。 */
+  upscaleLevel: UpscaleLevel;
+  /** 実効拡大率(1.0=等倍)。ツールチップに「約1.4倍」等として表示する。 */
+  scale: number;
   /** 配置の結果、被写体が出力キャンバスの外にはみ出して切れる場合true。 */
   isOverflowing: boolean;
 }
@@ -193,5 +210,5 @@ export function computeStampWarnings(
     layout.drawY - outline < 0 ||
     layout.drawX + layout.drawWidth + outline > outputWidth ||
     layout.drawY + layout.drawHeight + outline > outputHeight;
-  return { isUpscaled: layout.isUpscaled, isOverflowing };
+  return { upscaleLevel: computeUpscaleLevel(layout.scale), scale: layout.scale, isOverflowing };
 }

@@ -19,6 +19,15 @@ export const STAMP_MAX_FILE_SIZE_BYTES = 1024 * 1024;
 /** 画像周囲の推奨余白(px)。 */
 export const STAMP_RECOMMENDED_MARGIN_PX = 10;
 
+/**
+ * 解像度不足(拡大しすぎ)の警告しきい値(実効拡大率、1.0=等倍)。2段階にしている
+ * (追加修正指示書 項目12)。生成シートの1マスは約256pxのため、370×320に拡大すると
+ * ほぼ全スタンプがCAUTIONを超えてしまう。本当に危ないもの(WARNING超)が埋もれないよう、
+ * 注意(黄)と警告(赤)を分けている。
+ */
+export const UPSCALE_CAUTION_THRESHOLD = 1.3;
+export const UPSCALE_WARNING_THRESHOLD = 1.6;
+
 /** 書き出し形式。 */
 export const STAMP_MIME_TYPE = 'image/png';
 
