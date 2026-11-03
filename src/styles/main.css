@@ -1002,3 +1002,47 @@ body {
   font-size: 0.78rem;
   text-align: center;
 }
+
+/* ---- タブ②: シートの割り当てダイアログ(設定JSON読込) ---- */
+
+.sheet-assign-dialog {
+  width: min(560px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.sheet-assign-dialog__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.sheet-assign-dialog__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.sheet-assign-dialog__label {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.sheet-assign-dialog__select {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font: inherit;
+  background: #fff;
+}
+
+.sheet-assign-dialog__size-hint,
+.sheet-assign-dialog__duplicate-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #c9580a;
+}

@@ -84,7 +84,8 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   (stampCard.tsのプレビュー・容量表示、個別保存に使用)
 [表紙のStampAdjust・採用元シート] --(export/coverImages.ts)--> [main.png用ImageDataLike, tab.png用ImageDataLike]
 [PNG Blob × 24 + main.png + tab.png (+ sources.txt)] --(export/zip.ts: JSZip)--> [ZIPファイル] --> ダウンロード
-[ProjectState] <--(JSON保存/読込。画像本体は含めず、読込時はシート名で現在読み込み済みのシートと突き合わせる)
+[ProjectState] <--(JSON保存/読込。画像本体は含めず、読込時はsplit/sheetMatch.tsで現在読み込み済みのシートと
+  名前+サイズで自動対応づけし、一致しなかった分はsplit/sheetAssignDialog.tsで手動割り当てする)
 ```
 
 ## 検出アルゴリズム(mask.ts / gridSplit.ts)
