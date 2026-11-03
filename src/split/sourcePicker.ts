@@ -74,6 +74,15 @@ export function createSourcePicker(callbacks: SourcePickerCallbacks): SourcePick
       const hasWarning = option.warnings.length > 0;
       const statusLabel = isEmpty ? '(空の枠)' : hasWarning ? '(警告あり)' : '';
 
+      const badge = h('span', { className: 'source-picker__badge', text: `S${i + 1}` });
+      const nameLabel = h('span', { className: 'source-picker__name', text: option.sheet.name });
+      // 色だけに頼らず、文字でも空・警告の状態を示す(アイコン+短いラベル)。
+      const statusText = h('span', {
+        className: 'source-picker__status',
+        text: isEmpty ? '⚠ 空' : hasWarning ? '⚠ 警告' : '',
+      });
+      statusText.hidden = !hasWarning;
+
       const button = h(
         'button',
         {
@@ -87,7 +96,7 @@ export function createSourcePicker(callbacks: SourcePickerCallbacks): SourcePick
           attrs: { type: 'button', title: `${option.sheet.name}${statusLabel}` },
           on: { click: () => callbacks.onSelect(option.sheet.id) },
         },
-        [canvas, h('span', { className: 'source-picker__label', text: `S${i + 1}` })],
+        [canvas, h('span', { className: 'source-picker__label' }, [badge, nameLabel]), statusText],
       );
       list.append(button);
     });

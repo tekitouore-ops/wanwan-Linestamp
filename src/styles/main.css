@@ -910,6 +910,7 @@ body {
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  width: 72px;
   padding: 4px;
   border: 2px solid transparent;
   border-radius: 6px;
@@ -923,7 +924,7 @@ body {
 }
 
 .source-picker__item--warning .source-picker__label {
-  color: #c98a00;
+  color: #8a5a00;
 }
 
 .source-picker__canvas {
@@ -934,8 +935,29 @@ body {
 }
 
 .source-picker__label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
   font-size: 0.72rem;
   color: var(--color-text-muted);
+}
+
+.source-picker__badge {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.source-picker__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.source-picker__status {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #c9580a;
 }
 
 /* ---- タブ②: 全シートで比較ダイアログ ---- */
