@@ -418,6 +418,7 @@ export function createPreviewView(
       return;
     }
     refreshSourcePicker(index);
+    const sourceSheet = getSourceSheet(project, index);
     adjustPanel.showForStamp({
       index,
       frame,
@@ -425,6 +426,7 @@ export function createPreviewView(
       isCover: index === project.coverIndex,
       sourcePickerElement: sourcePicker.element,
       hasMultipleSheets: project.sheets.length > 1,
+      backgroundMode: sourceSheet?.detectSettings.backgroundMode ?? 'color',
     });
   }
 

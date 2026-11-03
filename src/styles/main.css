@@ -312,6 +312,11 @@ body {
   color: var(--color-text-muted);
 }
 
+.field__hint--warning {
+  color: #8a5a00;
+  font-weight: 600;
+}
+
 .field[hidden] {
   display: none;
 }

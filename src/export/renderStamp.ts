@@ -172,12 +172,26 @@ export interface StampWarnings {
   isOverflowing: boolean;
 }
 
-/** 実際に描画せず、解像度不足・はみ出しの警告だけを判定する(カードの警告バッジ用)。 */
+/**
+ * 実際に描画せず、解像度不足・はみ出しの警告だけを判定する(カードの警告バッジ用)。
+ * はみ出し判定は、縁フチ(`adjust.outline`)で膨張する分も含めて行う(修正指示書 項目8参照)。
+ * 縁フチ単体でキャンバス外へ出る場合も、既存の「配置がキャンバスからはみ出し」警告を使う
+ * (縁フチ専用の別警告は増やさない)。
+ */
 export function computeStampWarnings(
   frame: Rect,
   adjust: StampAdjust,
   globalSettings: GlobalSettings,
 ): StampWarnings {
+  const outputWidth = Math.max(2, roundToEven(globalSettings.outputWidth));
+  const outputHeight = Math.max(2, roundToEven(globalSettings.outputHeight));
   const layout = computeStampLayout(frame, adjust, globalSettings);
-  return { isUpscaled: layout.isUpscaled, isOverflowing: layout.isOverflowing };
+  const outline = Math.max(0, adjust.outline);
+  const isOverflowing =
+    layout.isOverflowing ||
+    layout.drawX - outline < 0 ||
+    layout.drawY - outline < 0 ||
+    layout.drawX + layout.drawWidth + outline > outputWidth ||
+    layout.drawY + layout.drawHeight + outline > outputHeight;
+  return { isUpscaled: layout.isUpscaled, isOverflowing };
 }

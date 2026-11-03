@@ -4,6 +4,7 @@ import { createSliderField, type SliderField } from '../ui/slider';
 import {
   DEFAULT_GLOBAL_SETTINGS,
   DEFAULT_STAMP_ADJUST,
+  type BackgroundMode,
   type CropAmount,
   type GlobalSettings,
   type Rect,
@@ -38,6 +39,8 @@ export interface ShowForStampParams {
   sourcePickerElement: HTMLElement;
   /** シートが2枚以上あるか(「全シートで比較」「採用元をまとめて設定」ボタンの表示切替に使う)。 */
   hasMultipleSheets: boolean;
+  /** 採用元シートの背景の扱い(背景色モードで縁フチ=0のときのヒント表示に使う。修正指示書 項目8参照)。 */
+  backgroundMode: BackgroundMode;
 }
 
 export interface AdjustPanelHandle {
@@ -112,6 +115,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     onChange: (v) => callbacks.onGlobalSettingsChange({ alphaThreshold: v }),
     onCommit: () => callbacks.onCommit(),
   });
+  const alphaThresholdHint = h('p', {
+    className: 'field__hint',
+    text: '背景色モードで、AIが描いた白フチが背景と一緒に消えてしまう場合は、この値を下げると消えにくくなります。',
+  });
   const featherSlider = createSliderField({
     label: 'エッジのぼかし',
     unit: 'px',
@@ -161,6 +168,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     innerMarginSlider.element,
     defaultOutlineSlider.element,
     alphaThresholdSlider.element,
+    alphaThresholdHint,
     featherSlider.element,
     alignField,
     allowUpscaleField,
@@ -254,6 +262,19 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       onChange: (v) => callbacks.onAdjustChange(index, { edgeFix: v }),
       onCommit: () => callbacks.onCommit(),
     });
+    const outlineHint = h('p', {
+      className: 'field__hint',
+      text: 'AIが生成画像にすでに白フチを描いている場合は0〜2px程度にしてください。それ以上だとフチが二重になります。',
+    });
+    const outlineBackgroundModeHint = h('p', {
+      className: 'field__hint field__hint--warning',
+      text: '推奨: 縁フチを付けてください(背景色モードでは、縁フチ=0のままだとAIが描いた白フチが背景と一緒に透過処理で消えやすくなります)。',
+    });
+    function updateOutlineBackgroundModeHint(outlineValue: number): void {
+      outlineBackgroundModeHint.hidden = !(params.backgroundMode === 'color' && outlineValue === 0);
+    }
+    updateOutlineBackgroundModeHint(resolved.outline);
+
     const outlineSlider = createSliderField({
       label: '縁フチ',
       unit: 'px',
@@ -262,7 +283,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       step: 1,
       value: resolved.outline,
       defaultValue: currentGlobalSettings.defaultOutline,
-      onChange: (v) => callbacks.onAdjustChange(index, { outline: v }),
+      onChange: (v) => {
+        callbacks.onAdjustChange(index, { outline: v });
+        updateOutlineBackgroundModeHint(v);
+      },
       onCommit: () => callbacks.onCommit(),
     });
 
@@ -379,6 +403,8 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       h('h4', { className: 'split-section-heading', text: '補正' }),
       edgeFixSlider.element,
       outlineSlider.element,
+      outlineHint,
+      outlineBackgroundModeHint,
       h('h4', { className: 'split-section-heading', text: '切り抜き' }),
       cropTopSlider.element,
       cropRightSlider.element,
