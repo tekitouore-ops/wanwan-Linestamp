@@ -188,6 +188,15 @@ function createSectionHeading(text: string): HTMLElement {
   return h('h3', { className: 'split-section-heading', text });
 }
 
+/**
+ * ポインター押下時に、どの操作として扱うかを決める。スペース押下中、またはホイール(中)ボタンでの
+ * 押下は、選択状態や押下位置にかかわらず常にパン優先にする(修正指示書 項目2)。
+ * DOM非依存の純粋関数として切り出し、優先順位をテストできるようにしてある。
+ */
+export function resolvePointerDownIntent(spacePressed: boolean, button: number): 'pan' | 'other' {
+  return spacePressed || button === 1 ? 'pan' : 'other';
+}
+
 function defaultDetectSettings(): DetectionParams {
   return { ...DEFAULT_DETECTION_PARAMS, cols: DEFAULT_GRID.cols, rows: DEFAULT_GRID.rows };
 }
@@ -215,6 +224,8 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
   let baseScale = 1;
   let dragMode: DragMode | null = null;
   let eyedropperActive = false;
+  /** スペースキーが押されている間は、枠の選択状態にかかわらずドラッグをパンにする。 */
+  let spacePressed = false;
   const camera = { zoom: 1, panX: 0, panY: 0 };
 
   /** シートごとの「均等分割を使うか」「直近の検出方式ラベル」(保存JSON・Sheet型には含めないUIのみの状態)。 */
@@ -363,7 +374,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
         eyedropperActive = !eyedropperActive;
         eyedropperButton.setAttribute('aria-pressed', String(eyedropperActive));
         eyedropperButton.classList.toggle('button--active', eyedropperActive);
-        canvas.style.cursor = eyedropperActive ? 'crosshair' : '';
+        updateIdleCursor();
       },
     },
   });
@@ -698,6 +709,22 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     const rect = canvas.getBoundingClientRect();
     const screenX = event.clientX - rect.left;
     const screenY = event.clientY - rect.top;
+
+    // スペース押下中、またはホイール(中)ボタンでのドラッグは、選択状態にかかわらず常にパンにする。
+    if (resolvePointerDownIntent(spacePressed, event.button) === 'pan') {
+      event.preventDefault();
+      dragMode = {
+        kind: 'pan',
+        startScreenX: screenX,
+        startScreenY: screenY,
+        startPanX: camera.panX,
+        startPanY: camera.panY,
+      };
+      canvas.setPointerCapture(event.pointerId);
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+
     const imagePoint = screenToImage(screenX, screenY);
 
     if (eyedropperActive) {
@@ -711,7 +738,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
       eyedropperActive = false;
       eyedropperButton.setAttribute('aria-pressed', 'false');
       eyedropperButton.classList.remove('button--active');
-      canvas.style.cursor = '';
+      updateIdleCursor();
       runDetection();
       showToast('背景色を指定しました。再検出しました。');
       return;
@@ -818,12 +845,48 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     }
   });
 
+  function updateIdleCursor(): void {
+    if (dragMode) {
+      return;
+    }
+    canvas.style.cursor = spacePressed ? 'grab' : eyedropperActive ? 'crosshair' : '';
+  }
+
   canvas.addEventListener('pointerup', (event) => {
     dragMode = null;
     canvas.releasePointerCapture(event.pointerId);
+    updateIdleCursor();
   });
   canvas.addEventListener('pointercancel', () => {
     dragMode = null;
+    updateIdleCursor();
+  });
+
+  function isEditableEventTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  window.addEventListener('keydown', (event) => {
+    if (event.code !== 'Space' || isEditableEventTarget(event.target)) {
+      return;
+    }
+    event.preventDefault(); // スペースキーでのページスクロールを防ぐ
+    if (!spacePressed) {
+      spacePressed = true;
+      updateIdleCursor();
+    }
+  });
+
+  window.addEventListener('keyup', (event) => {
+    if (event.code !== 'Space') {
+      return;
+    }
+    spacePressed = false;
+    updateIdleCursor();
   });
 
   canvas.addEventListener(
@@ -1029,11 +1092,17 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     addMoreInput.value = '';
   });
 
+  const panHint = h('p', {
+    className: 'split-method-label',
+    text: '操作: スペース+ドラッグ(またはホイールクリック+ドラッグ)で移動 / ホイールで拡大縮小',
+  });
+
   const workspace = h('div', { className: 'split-layout' }, [
     h('div', { className: 'split-canvas-wrapper' }, [
       canvas,
       methodLabel,
       backgroundModeLabel,
+      panHint,
       h('div', { className: 'toolbar' }, [
         zoomOutButton,
         zoomInButton,
