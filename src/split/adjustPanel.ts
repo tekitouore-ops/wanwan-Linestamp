@@ -20,6 +20,13 @@ export interface AdjustPanelCallbacks {
   onGlobalSettingsChange: (patch: Partial<GlobalSettings>) => void;
   onCompareSources: (index: number) => void;
   onBulkSource: () => void;
+  /**
+   * スライダー・数値入力・チェックボックス等での操作が1手ぶん確定したときに呼ばれる
+   * (Undo履歴へのコミット用。修正指示書 項目4参照)。スライダーはドラッグ中は呼ばれず、
+   * ドラッグ終了時に1回だけ呼ばれる。ボタン操作(リセット・表紙設定等)は呼び出し側で
+   * 対応するコールバック(`onResetStamp`等)のあとに直接コミットするため、ここでは呼ばない。
+   */
+  onCommit: () => void;
 }
 
 export interface ShowForStampParams {
@@ -60,6 +67,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.outputWidth,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.outputWidth,
     onChange: (v) => callbacks.onGlobalSettingsChange({ outputWidth: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const outputHeightSlider = createSliderField({
     label: '出力高さ',
@@ -70,6 +78,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.outputHeight,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.outputHeight,
     onChange: (v) => callbacks.onGlobalSettingsChange({ outputHeight: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const innerMarginSlider = createSliderField({
     label: '内側余白',
@@ -80,6 +89,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.innerMargin,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.innerMargin,
     onChange: (v) => callbacks.onGlobalSettingsChange({ innerMargin: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const defaultOutlineSlider = createSliderField({
     label: '縁フチの既定値',
@@ -90,6 +100,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.defaultOutline,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.defaultOutline,
     onChange: (v) => callbacks.onGlobalSettingsChange({ defaultOutline: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const alphaThresholdSlider = createSliderField({
     label: '透過しきい値',
@@ -99,6 +110,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.alphaThreshold,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.alphaThreshold,
     onChange: (v) => callbacks.onGlobalSettingsChange({ alphaThreshold: v }),
+    onCommit: () => callbacks.onCommit(),
   });
   const featherSlider = createSliderField({
     label: 'エッジのぼかし',
@@ -109,6 +121,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     value: DEFAULT_GLOBAL_SETTINGS.featherPx,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.featherPx,
     onChange: (v) => callbacks.onGlobalSettingsChange({ featherPx: v }),
+    onCommit: () => callbacks.onCommit(),
   });
 
   const alignSelect = h('select', {});
@@ -121,6 +134,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     callbacks.onGlobalSettingsChange({
       align: alignSelect.value === 'bottom' ? 'bottom' : 'center',
     });
+    callbacks.onCommit();
   });
   const alignField = h('div', { className: 'field' }, [
     h('label', { className: 'field__label', text: '揃え' }),
@@ -131,6 +145,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
   allowUpscaleCheckbox.checked = DEFAULT_GLOBAL_SETTINGS.allowUpscale;
   allowUpscaleCheckbox.addEventListener('change', () => {
     callbacks.onGlobalSettingsChange({ allowUpscale: allowUpscaleCheckbox.checked });
+    callbacks.onCommit();
   });
   const allowUpscaleField = h('div', { className: 'field field--checkbox' }, [
     h('label', { className: 'checkbox-field' }, [
@@ -237,6 +252,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.edgeFix,
       defaultValue: DEFAULT_STAMP_ADJUST.edgeFix,
       onChange: (v) => callbacks.onAdjustChange(index, { edgeFix: v }),
+      onCommit: () => callbacks.onCommit(),
     });
     const outlineSlider = createSliderField({
       label: '縁フチ',
@@ -247,6 +263,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.outline,
       defaultValue: currentGlobalSettings.defaultOutline,
       onChange: (v) => callbacks.onAdjustChange(index, { outline: v }),
+      onCommit: () => callbacks.onCommit(),
     });
 
     const cropTopMax = cropMax(frame.height);
@@ -269,6 +286,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
         value,
         defaultValue: 0,
         onChange,
+        onCommit: () => callbacks.onCommit(),
       });
     }
 
@@ -297,6 +315,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.scale,
       defaultValue: DEFAULT_STAMP_ADJUST.scale,
       onChange: (v) => callbacks.onAdjustChange(index, { scale: v }),
+      onCommit: () => callbacks.onCommit(),
     });
     const offsetXSlider = createSliderField({
       label: '横位置',
@@ -307,6 +326,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.offsetX,
       defaultValue: DEFAULT_STAMP_ADJUST.offsetX,
       onChange: (v) => callbacks.onAdjustChange(index, { offsetX: v }),
+      onCommit: () => callbacks.onCommit(),
     });
     const offsetYSlider = createSliderField({
       label: '縦位置',
@@ -317,6 +337,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       value: resolved.offsetY,
       defaultValue: DEFAULT_STAMP_ADJUST.offsetY,
       onChange: (v) => callbacks.onAdjustChange(index, { offsetY: v }),
+      onCommit: () => callbacks.onCommit(),
     });
 
     const coverButton = h('button', {

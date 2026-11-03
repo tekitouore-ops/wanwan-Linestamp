@@ -1,4 +1,4 @@
-import { h } from '../shared/dom';
+import { h, isEditableEventTarget } from '../shared/dom';
 import {
   downscaleImageData,
   imageDataLikeToCanvas,
@@ -24,6 +24,15 @@ import {
   type EditorState,
 } from './editorState';
 import { detectGrid, detectGridEqualDivision, fitBoxToContent } from './gridSplit';
+import {
+  canRedo,
+  canUndo,
+  createHistory,
+  push as pushHistory,
+  redo as redoHistory,
+  undo as undoHistory,
+  type History,
+} from './history';
 import { detectIsTransparentImage, estimateBackgroundColor } from './mask';
 import {
   addSheet,
@@ -219,6 +228,12 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
   let store: SheetStore = createSheetStore();
   let activeSheetId: string | null = null;
   const editorStore = new Store<EditorState | null>(null);
+  /**
+   * ステップAの枠編集(移動・リサイズ・入れ替え・リセット等)用のUndo/Redo履歴(修正指示書 項目4)。
+   * ステップBの履歴とは別の独立したスタック。シート切り替え・再検出など「土台が変わる」操作では
+   * 作り直す(そのシートの編集セッションが変わるため、履歴を引き継がない)。
+   */
+  let editorHistory: History<EditorState> | null = null;
 
   let cachedCanvas: HTMLCanvasElement | null = null;
   let baseScale = 1;
@@ -251,6 +266,48 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     const created = { useEqualDivision: false, lastMethod: null };
     uiStateBySheet.set(id, created);
     return created;
+  }
+
+  function updateEditorHistoryButtons(): void {
+    undoCellButton.toggleAttribute('disabled', !(editorHistory && canUndo(editorHistory)));
+    redoCellButton.toggleAttribute('disabled', !(editorHistory && canRedo(editorHistory)));
+  }
+
+  /**
+   * 現在のエディタ状態を1手として履歴へコミットする。移動・リサイズは`pointerup`(操作終了)で、
+   * 入れ替え・リセット等のボタン操作は押下時に呼ぶ(ドラッグ中の`pointermove`では呼ばない)。
+   */
+  function commitEditorHistory(): void {
+    const current = editorStore.getState();
+    if (!current || !editorHistory) {
+      return;
+    }
+    editorHistory = pushHistory(editorHistory, current);
+    updateEditorHistoryButtons();
+  }
+
+  /** シート切り替え・再検出など、編集の土台が変わるときに履歴を作り直す。 */
+  function resetEditorHistory(state: EditorState): void {
+    editorHistory = createHistory(state);
+    updateEditorHistoryButtons();
+  }
+
+  function undoCellEdit(): void {
+    if (!editorHistory || !canUndo(editorHistory)) {
+      return;
+    }
+    editorHistory = undoHistory(editorHistory);
+    editorStore.setState(editorHistory.present);
+    updateEditorHistoryButtons();
+  }
+
+  function redoCellEdit(): void {
+    if (!editorHistory || !canRedo(editorHistory)) {
+      return;
+    }
+    editorHistory = redoHistory(editorHistory);
+    editorStore.setState(editorHistory.present);
+    updateEditorHistoryButtons();
   }
 
   const emptyState = h('p', {
@@ -394,9 +451,24 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
       click: () => {
         editorStore.setState((s) => (s ? resetAllCells(s) : s));
         showToast('直近の検出結果に戻しました。');
+        commitEditorHistory();
       },
     },
   });
+
+  const undoCellButton = h('button', {
+    className: 'button',
+    attrs: { type: 'button' },
+    text: '元に戻す',
+    on: { click: () => undoCellEdit() },
+  });
+  const redoCellButton = h('button', {
+    className: 'button',
+    attrs: { type: 'button' },
+    text: 'やり直す',
+    on: { click: () => redoCellEdit() },
+  });
+  updateEditorHistoryButtons();
 
   const confirmButton = h('button', {
     className: 'button button--primary',
@@ -472,6 +544,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
         editorStore.setState((s) =>
           s ? swapCells(s, editor.selectedIndex as number, targetIndex) : s,
         );
+        commitEditorHistory();
       },
     },
   });
@@ -495,6 +568,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
         const region = dilateBox(cell.box, 0.3, image);
         const fitted = fitBoxToContent(image, region, activeDetectionParams());
         editorStore.setState((s) => (s ? updateCellBox(s, cell.index, fitted) : s));
+        commitEditorHistory();
       },
     },
   });
@@ -510,6 +584,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
           return;
         }
         editorStore.setState((s) => (s ? resetCell(s, editor.selectedIndex as number) : s));
+        commitEditorHistory();
       },
     },
   });
@@ -603,9 +678,9 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     uiState.lastMethod = method;
     const updatedSheet = getSheet(store, sheet.id);
     if (updatedSheet) {
-      editorStore.setState(
-        createEditorStateFromFrames(updatedSheet.frames, updatedSheet.frameWarnings),
-      );
+      const next = createEditorStateFromFrames(updatedSheet.frames, updatedSheet.frameWarnings);
+      editorStore.setState(next);
+      resetEditorHistory(next);
     }
   }
 
@@ -853,22 +928,19 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
   }
 
   canvas.addEventListener('pointerup', (event) => {
+    const wasEditingBox =
+      dragMode?.kind === 'move' || dragMode?.kind === 'resize' || dragMode?.kind === 'draw';
     dragMode = null;
     canvas.releasePointerCapture(event.pointerId);
     updateIdleCursor();
+    if (wasEditingBox) {
+      commitEditorHistory();
+    }
   });
   canvas.addEventListener('pointercancel', () => {
     dragMode = null;
     updateIdleCursor();
   });
-
-  function isEditableEventTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) {
-      return false;
-    }
-    const tag = target.tagName;
-    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
-  }
 
   window.addEventListener('keydown', (event) => {
     if (event.code !== 'Space' || isEditableEventTarget(event.target)) {
@@ -936,6 +1008,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     event.preventDefault();
     const box = clampBoxToImage({ ...cell.box, x, y }, image);
     editorStore.setState((s) => (s ? updateCellBox(s, cell.index, box) : s));
+    commitEditorHistory();
   });
 
   editorStore.subscribe(() => render());
@@ -967,11 +1040,12 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     emptyState.hidden = true;
     workspace.hidden = false;
 
-    editorStore.setState(
+    const nextEditorState =
       sheet.frames.length > 0
         ? createEditorStateFromFrames(sheet.frames, sheet.frameWarnings)
-        : createEmptyEditorState(),
-    );
+        : createEmptyEditorState();
+    editorStore.setState(nextEditorState);
+    resetEditorHistory(nextEditorState);
 
     bgThreshold.setValue(sheet.detectSettings.backgroundThreshold);
     minArea.setValue(Number((sheet.detectSettings.minAreaRatio * 100).toFixed(3)));
@@ -1120,6 +1194,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
       equalDivisionField,
       h('div', { className: 'toolbar' }, [redetectButton, eyedropperButton]),
       resetAllButton,
+      h('div', { className: 'toolbar' }, [undoCellButton, redoCellButton]),
       createSectionHeading('選択中のセル'),
       selectionPanel,
       createSectionHeading('警告'),
@@ -1147,13 +1222,30 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     }
   }
 
-  return {
-    element: h('div', { className: 'split-view' }, [
-      sheetTabs.element,
-      dropzone,
-      emptyState,
-      workspace,
-    ]),
-    openWithExisting,
-  };
+  const element = h('div', { className: 'split-view' }, [
+    sheetTabs.element,
+    dropzone,
+    emptyState,
+    workspace,
+  ]);
+
+  window.addEventListener('keydown', (event) => {
+    if (element.hidden || isEditableEventTarget(event.target)) {
+      return;
+    }
+    const key = event.key.toLowerCase();
+    const withModifier = event.ctrlKey || event.metaKey;
+    if (!withModifier || (key !== 'z' && key !== 'y')) {
+      return;
+    }
+    if (key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      undoCellEdit();
+    } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+      event.preventDefault();
+      redoCellEdit();
+    }
+  });
+
+  return { element, openWithExisting };
 }

@@ -47,3 +47,16 @@ export function clearChildren(el: Element): void {
     el.removeChild(el.firstChild);
   }
 }
+
+/**
+ * テキスト入力など、キーボード操作が本来の編集対象になる要素か判定する。
+ * スペースキーでのパンやCtrl+Zでのundoなど、画面全体のショートカットを
+ * 文字入力中には発火させないためのガードに使う。
+ */
+export function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}

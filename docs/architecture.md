@@ -35,6 +35,8 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   保持し、アクティブなシートの枠編集だけを`EditorState`(既存の単一シート用ロジックをそのまま使う)で行う。
   シート切替時は、現在のエディタ状態をそのシートの`frames`/`frameWarnings`へ書き戻してから切り替える。
   「この枠で確定」で全シートぶんをまとめてステップBへ渡す(`editorState.ts: confirmSheets`)。
+  枠編集(移動・リサイズ・入れ替え・リセット等)は`split/history.ts`の`History<EditorState>`でUndo/Redoできる。
+  操作確定時(ドラッグ終了・ボタン押下・キー押下)に1手コミットし、シート切替・再検出時は履歴を作り直す。
 - **ステップB**(`split/previewView.ts` が全体レイアウトを担当):
   - 左: 調整パネル(`split/adjustPanel.ts`、選択中の1枚の個別設定+採用元選択〈`split/sourcePicker.ts`〉+
     折りたたみ式の全体設定)。「全シートで比較…」(`split/compareDialog.ts`)、「採用元をまとめて設定…」
@@ -44,6 +46,10 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   - ステップBから「枠を修正」でステップAへ戻れる。戻っても、採用元シートの枠を変えていないスタンプの
     個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す(画像データの
     再読み込みを避けるため)。
+  - このステップの操作(採用元切替・個別設定・表紙設定・全体設定・一括操作等)は、ステップAとは別の
+    `History<ProjectState>`(`split/history.ts`)でUndo/Redoできる。スライダーはドラッグ終了時に1手、
+    ボタンは押下ごとに1手コミットする(`ui/slider.ts`の`onCommit`で、ドラッグ中〈`onChange`〉と
+    確定時を区別する)。シート一式が変わる操作(`setProject`・設定JSON読込)では履歴を作り直す。
 
 ## データフロー(テキスト図)
 

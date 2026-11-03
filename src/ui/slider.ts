@@ -11,6 +11,12 @@ export interface SliderFieldOptions {
   /** ラベル末尾に添える単位表示(例: 'px', '%')。 */
   unit?: string;
   onChange: (value: number) => void;
+  /**
+   * ドラッグ終了時(またはダブルクリックでのリセット時)に1回だけ呼ばれる。
+   * `onChange`はドラッグ中は毎ティック呼ばれるため、Undo履歴への1手ぶんのコミットなど
+   * 「操作の確定時に1回だけ」実行したい処理はこちらに渡す(修正指示書 項目4参照)。
+   */
+  onCommit?: (value: number) => void;
 }
 
 export interface SliderField {
@@ -22,7 +28,7 @@ export interface SliderField {
 
 /** ラベル+スライダー+数値入力+ダブルクリックでの初期値リセットをまとめた共通部品。 */
 export function createSliderField(options: SliderFieldOptions): SliderField {
-  const { label, min, max, step, defaultValue, unit, onChange } = options;
+  const { label, min, max, step, defaultValue, unit, onChange, onCommit } = options;
 
   const rangeInput = h('input', {
     className: 'slider-field__range',
@@ -51,15 +57,20 @@ export function createSliderField(options: SliderFieldOptions): SliderField {
     numberInput.value = String(value);
     onChange(value);
   });
+  rangeInput.addEventListener('change', () => {
+    onCommit?.(clamp(Number(rangeInput.value)));
+  });
   numberInput.addEventListener('change', () => {
     const value = clamp(Number(numberInput.value));
     setDisplayValue(value);
     onChange(value);
+    onCommit?.(value);
   });
 
   function resetToDefault(): void {
     setDisplayValue(defaultValue);
     onChange(defaultValue);
+    onCommit?.(defaultValue);
   }
   rangeInput.addEventListener('dblclick', resetToDefault);
   numberInput.addEventListener('dblclick', resetToDefault);
