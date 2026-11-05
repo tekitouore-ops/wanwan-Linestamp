@@ -106,10 +106,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     onCommit: () => callbacks.onCommit(),
   });
   const defaultGhostRemovalSlider = createSliderField({
-    label: 'ゴミ除去(半透明の白)の既定値',
+    label: 'ゴミ除去(半透明のもや)の既定値',
     unit: '%',
     min: 0,
-    max: 50,
+    max: 60,
     step: 1,
     value: DEFAULT_GLOBAL_SETTINGS.defaultGhostRemoval,
     defaultValue: DEFAULT_GLOBAL_SETTINGS.defaultGhostRemoval,
@@ -118,7 +118,22 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
   });
   const ghostRemovalHint = h('p', {
     className: 'field__hint',
-    text: '被写体の周りに、白いもやが残るときに上げてください。上げすぎると、被写体の縁が削れます。黒背景で確認すると分かりやすいです。',
+    text: 'キャラクターの背景に残った半透明のもや(白・灰色・暗い色)を除去します。不透明な白フチや文字は消えません。黒背景で確認すると分かりやすいです。',
+  });
+  const defaultGhostProtectEdgePxSlider = createSliderField({
+    label: 'ゴミ除去の保護範囲の既定値',
+    unit: 'px',
+    min: 0,
+    max: 4,
+    step: 1,
+    value: DEFAULT_GLOBAL_SETTINGS.defaultGhostProtectEdgePx,
+    defaultValue: DEFAULT_GLOBAL_SETTINGS.defaultGhostProtectEdgePx,
+    onChange: (v) => callbacks.onGlobalSettingsChange({ defaultGhostProtectEdgePx: v }),
+    onCommit: () => callbacks.onCommit(),
+  });
+  const ghostProtectEdgePxHint = h('p', {
+    className: 'field__hint',
+    text: '文字や白フチが削れる場合は、値を上げてください。',
   });
   const alphaThresholdSlider = createSliderField({
     label: '透過しきい値',
@@ -184,6 +199,8 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     defaultOutlineSlider.element,
     defaultGhostRemovalSlider.element,
     ghostRemovalHint,
+    defaultGhostProtectEdgePxSlider.element,
+    ghostProtectEdgePxHint,
     alphaThresholdSlider.element,
     alphaThresholdHint,
     featherSlider.element,
@@ -198,6 +215,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     innerMarginSlider.setValue(settings.innerMargin);
     defaultOutlineSlider.setValue(settings.defaultOutline);
     defaultGhostRemovalSlider.setValue(settings.defaultGhostRemoval);
+    defaultGhostProtectEdgePxSlider.setValue(settings.defaultGhostProtectEdgePx);
     alphaThresholdSlider.setValue(settings.alphaThreshold);
     featherSlider.setValue(settings.featherPx);
     alignSelect.value = settings.align;
@@ -253,7 +271,9 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
             const fields: (keyof StampAdjustFields)[] = [];
             if (applyFieldCheckboxes.edgeFix.checked) fields.push('edgeFix');
             if (applyFieldCheckboxes.outline.checked) fields.push('outline');
-            if (applyFieldCheckboxes.ghostRemoval.checked) fields.push('ghostRemoval');
+            if (applyFieldCheckboxes.ghostRemoval.checked) {
+              fields.push('ghostRemoval', 'ghostProtectEdgePx');
+            }
             if (applyFieldCheckboxes.scale.checked) fields.push('scale');
             if (applyFieldCheckboxes.position.checked) fields.push('offsetX', 'offsetY');
             callbacks.onApplyToAll(currentIndex, fields);
@@ -312,10 +332,10 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     });
 
     const ghostRemovalSlider = createSliderField({
-      label: 'ゴミ除去(半透明の白)',
+      label: 'ゴミ除去(半透明のもや)',
       unit: '%',
       min: 0,
-      max: 50,
+      max: 60,
       step: 1,
       value: resolved.ghostRemoval,
       defaultValue: currentGlobalSettings.defaultGhostRemoval,
@@ -324,7 +344,22 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     });
     const ghostRemovalStampHint = h('p', {
       className: 'field__hint',
-      text: '被写体の周りに、白いもやが残るときに上げてください。上げすぎると、被写体の縁が削れます。黒背景で確認すると分かりやすいです。',
+      text: 'キャラクターの背景に残った半透明のもや(白・灰色・暗い色)を除去します。不透明な白フチや文字は消えません。黒背景で確認すると分かりやすいです。',
+    });
+    const ghostProtectEdgePxSlider = createSliderField({
+      label: 'ゴミ除去の保護範囲',
+      unit: 'px',
+      min: 0,
+      max: 4,
+      step: 1,
+      value: resolved.ghostProtectEdgePx,
+      defaultValue: currentGlobalSettings.defaultGhostProtectEdgePx,
+      onChange: (v) => callbacks.onAdjustChange(index, { ghostProtectEdgePx: v }),
+      onCommit: () => callbacks.onCommit(),
+    });
+    const ghostProtectEdgePxStampHint = h('p', {
+      className: 'field__hint',
+      text: '文字や白フチが削れる場合は、値を上げてください。',
     });
 
     const cropTopMax = cropMax(frame.height);
@@ -444,6 +479,8 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       outlineBackgroundModeHint,
       ghostRemovalSlider.element,
       ghostRemovalStampHint,
+      ghostProtectEdgePxSlider.element,
+      ghostProtectEdgePxStampHint,
       h('h4', { className: 'split-section-heading', text: '切り抜き' }),
       cropTopSlider.element,
       cropRightSlider.element,

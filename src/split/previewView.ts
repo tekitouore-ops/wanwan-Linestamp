@@ -150,6 +150,9 @@ function parseAdjustFields(value: unknown): Partial<StampAdjustFields> {
   if (typeof value.edgeFix === 'number') result.edgeFix = value.edgeFix;
   if (typeof value.outline === 'number') result.outline = value.outline;
   if (typeof value.ghostRemoval === 'number') result.ghostRemoval = value.ghostRemoval;
+  if (typeof value.ghostProtectEdgePx === 'number') {
+    result.ghostProtectEdgePx = value.ghostProtectEdgePx;
+  }
   if (typeof value.scale === 'number') result.scale = value.scale;
   if (typeof value.offsetX === 'number') result.offsetX = value.offsetX;
   if (typeof value.offsetY === 'number') result.offsetY = value.offsetY;
@@ -171,6 +174,10 @@ function parseGlobalSettings(value: unknown): GlobalSettings {
       typeof value.defaultGhostRemoval === 'number'
         ? value.defaultGhostRemoval
         : g.defaultGhostRemoval,
+    defaultGhostProtectEdgePx:
+      typeof value.defaultGhostProtectEdgePx === 'number'
+        ? value.defaultGhostProtectEdgePx
+        : g.defaultGhostProtectEdgePx,
     alphaThreshold:
       typeof value.alphaThreshold === 'number' ? value.alphaThreshold : g.alphaThreshold,
     featherPx: typeof value.featherPx === 'number' ? value.featherPx : g.featherPx,

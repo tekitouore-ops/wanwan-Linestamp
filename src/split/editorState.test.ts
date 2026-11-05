@@ -337,6 +337,7 @@ describe('ProjectStateの個別設定・全体設定・表紙・プレビュー'
       edgeFix: 0,
       outline: state.globalSettings.defaultOutline,
       ghostRemoval: state.globalSettings.defaultGhostRemoval,
+      ghostProtectEdgePx: state.globalSettings.defaultGhostProtectEdgePx,
       crop: { top: 0, right: 0, bottom: 0, left: 0 },
       scale: 100,
       offsetX: 0,

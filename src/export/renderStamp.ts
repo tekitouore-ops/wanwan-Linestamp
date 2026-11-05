@@ -151,10 +151,11 @@ export function renderStamp(
           globalSettings.alphaThreshold,
           globalSettings.featherPx,
         );
-  // ゴミ除去(半透明の白)は、背景透過の直後・縁補正の前に適用する(追加修正指示書 第3弾 項目15)。
+  // ゴミ除去(半透明のもや)は、背景透過の直後・縁補正の前に適用する(追加修正指示書 第3弾
+  // 項目15、第5弾 項目18で色を問わない判定に拡張)。
   const deghosted = removeGhost(matted, {
     alphaMax: Math.round((adjust.ghostRemoval / 100) * 255),
-    backgroundColor: backgroundMode === 'color' ? backgroundColor : undefined,
+    protectEdgePx: adjust.ghostProtectEdgePx,
   });
   const edgeFixed = applyEdgeFix(deghosted, adjust.edgeFix);
 
