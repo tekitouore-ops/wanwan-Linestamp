@@ -918,6 +918,23 @@ body {
   height: 74px;
 }
 
+/* ---- タブ②: 選択中の拡大プレビュー(追加修正指示書 第3弾 項目16) ---- */
+
+.large-preview__wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 260px;
+  height: 240px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.large-preview__canvas {
+  display: block;
+}
+
 /* ---- タブ②: 全体に適用ダイアログ ---- */
 
 .apply-all-dialog {

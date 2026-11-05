@@ -42,7 +42,8 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
     折りたたみ式の全体設定)。「全シートで比較…」(`split/compareDialog.ts`)、「採用元をまとめて設定…」
     (`split/bulkSourceDialog.ts`)もここから開く。
   - 右: カードグリッド(`split/stampCard.ts` を24個並べる。シートが2枚以上なら採用元バッジ表示)+
-    上部バー(`split/backgroundPicker.ts` の確認用背景切替、ZIP書き出しボタン)
+    上部バー(`split/backgroundPicker.ts` の確認用背景切替、選択中の1枚を実寸〜2倍で表示する
+    拡大プレビュー〈`updateLargePreview`、2026-11-05 追加修正指示書 第3弾 項目16〉、ZIP書き出しボタン)
   - ステップBから「枠を修正」でステップAへ戻れる。戻っても、採用元シートの枠を変えていないスタンプの
     個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す(画像データの
     再読み込みを避けるため)。
