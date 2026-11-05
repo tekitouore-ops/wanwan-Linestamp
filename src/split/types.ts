@@ -72,6 +72,11 @@ export interface StampAdjust {
   edgeFix: number;
   /** 縁フチの太さ(0〜16px)。 */
   outline: number;
+  /**
+   * ゴミ除去(半透明の白)の強さ(0〜50%、0=OFF)。背景透過の直後に適用する、アルファの
+   * しきい値(%)として扱う(追加修正指示書 第3弾 項目15)。
+   */
+  ghostRemoval: number;
   /** 検出枠からの切り抜き量(元画像px、採用元シートの枠に対する値)。 */
   crop: CropAmount;
   /** 拡大率(%)。100 = 安全領域にフィットする倍率。 */
@@ -85,6 +90,7 @@ export interface StampAdjust {
 export const DEFAULT_STAMP_ADJUST: StampAdjust = {
   edgeFix: 0,
   outline: 0,
+  ghostRemoval: 0,
   crop: DEFAULT_CROP,
   scale: 100,
   offsetX: 0,
@@ -102,6 +108,11 @@ export interface GlobalSettings {
   innerMargin: number;
   /** 縁フチの既定値(px)。個別設定で上書きしていないスタンプに使う。 */
   defaultOutline: number;
+  /**
+   * ゴミ除去(半透明の白)の既定値(0〜50%、0=OFF)。個別設定で上書きしていないスタンプに使う
+   * (追加修正指示書 第3弾 項目15)。
+   */
+  defaultGhostRemoval: number;
   /** 透過しきい値(1〜80、書き出し時の背景除去〈`export/alpha.ts`〉で使う)。 */
   alphaThreshold: number;
   /** エッジのぼかし幅(0〜3px)。 */
@@ -116,6 +127,7 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   innerMargin: STAMP_RECOMMENDED_MARGIN_PX,
   // 既定は0(AIに白フチを描かせない前提のため)。実運用では4〜6pxが使われる想定(docs/decisions.md参照)。
   defaultOutline: 0,
+  defaultGhostRemoval: 0,
   alphaThreshold: 24,
   featherPx: 1,
   align: 'center',
@@ -187,6 +199,7 @@ export function resolveStampAdjust(
   return {
     edgeFix: setting?.adjust.edgeFix ?? DEFAULT_STAMP_ADJUST.edgeFix,
     outline: setting?.adjust.outline ?? globalSettings.defaultOutline,
+    ghostRemoval: setting?.adjust.ghostRemoval ?? globalSettings.defaultGhostRemoval,
     crop,
     scale: setting?.adjust.scale ?? DEFAULT_STAMP_ADJUST.scale,
     offsetX: setting?.adjust.offsetX ?? DEFAULT_STAMP_ADJUST.offsetX,
@@ -212,6 +225,7 @@ export function isStampModified(
   const adjustDefaults: StampAdjustFields = {
     edgeFix: DEFAULT_STAMP_ADJUST.edgeFix,
     outline: globalSettings.defaultOutline,
+    ghostRemoval: globalSettings.defaultGhostRemoval,
     scale: DEFAULT_STAMP_ADJUST.scale,
     offsetX: DEFAULT_STAMP_ADJUST.offsetX,
     offsetY: DEFAULT_STAMP_ADJUST.offsetY,

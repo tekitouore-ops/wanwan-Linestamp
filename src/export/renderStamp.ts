@@ -4,6 +4,7 @@ import type { ImageDataLike, RGB } from '../shared/types';
 import type { BackgroundMode, GlobalSettings, Rect, StampAdjust } from '../split/types';
 import { keepOriginalAlpha, removeBackground } from './alpha';
 import { applyEdgeFix } from './edge';
+import { removeGhost } from './ghost';
 import { computeLayout, roundToEven, type LayoutResult } from './layout';
 import { addWhiteOutline } from './outline';
 
@@ -150,7 +151,12 @@ export function renderStamp(
           globalSettings.alphaThreshold,
           globalSettings.featherPx,
         );
-  const edgeFixed = applyEdgeFix(matted, adjust.edgeFix);
+  // ゴミ除去(半透明の白)は、背景透過の直後・縁補正の前に適用する(追加修正指示書 第3弾 項目15)。
+  const deghosted = removeGhost(matted, {
+    alphaMax: Math.round((adjust.ghostRemoval / 100) * 255),
+    backgroundColor: backgroundMode === 'color' ? backgroundColor : undefined,
+  });
+  const edgeFixed = applyEdgeFix(deghosted, adjust.edgeFix);
 
   const layout = computeStampLayout(frame, adjust, globalSettings);
 
