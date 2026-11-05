@@ -11,6 +11,7 @@ import {
   type ValidationIssue,
 } from '../export/validate';
 import { buildFullZipFromBlobs, formatZipFileName } from '../export/zip';
+import { pickTextColor } from '../shared/color';
 import { h, isEditableEventTarget } from '../shared/dom';
 import { downloadBlob, downloadTextFile, openFilePicker } from '../shared/file';
 import { imageDataLikeToPngBlob, loadImageDataFromFile } from '../shared/imageData';
@@ -566,9 +567,15 @@ export function createPreviewView(
     if (preview.mode === 'checker') {
       cardsGrid.classList.add('preview-grid--checker');
       cardsGrid.style.backgroundColor = '';
+      // 市松模様のときは、従来どおり暗い文字のまま(修正指示書 項目14参照)。
+      cardsGrid.style.removeProperty('--preview-fg');
+      cardsGrid.style.removeProperty('--preview-fg-muted');
     } else {
       cardsGrid.classList.remove('preview-grid--checker');
       cardsGrid.style.backgroundColor = preview.color;
+      const { fg, fgMuted } = pickTextColor(preview.color);
+      cardsGrid.style.setProperty('--preview-fg', fg);
+      cardsGrid.style.setProperty('--preview-fg-muted', fgMuted);
     }
   }
 
