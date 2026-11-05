@@ -19,13 +19,9 @@ export interface LayoutResult {
   drawY: number;
   drawWidth: number;
   drawHeight: number;
-  /** 実効倍率が1.3倍を超え、解像度不足でぼやける可能性がある場合true。 */
-  isUpscaled: boolean;
   /** 配置の結果、被写体が出力キャンバスの外にはみ出して切れる場合true。 */
   isOverflowing: boolean;
 }
-
-const UPSCALE_WARNING_THRESHOLD = 1.3;
 
 /** 出力サイズを偶数に切り下げる(LINE規格の「幅・高さは偶数」要件)。 */
 export function roundToEven(value: number): number {
@@ -38,6 +34,8 @@ export function roundToEven(value: number): number {
  * 安全領域に収まる最大倍率を100%とし、そこに`scalePercent`・オフセットを適用する。
  * 安全領域や出力キャンバスからはみ出す場合でもクランプはしない(ユーザーが明示的に指定した拡大率のため)が、
  * `isOverflowing` でキャンバス外に出て切れることを呼び出し側に伝える。
+ * 解像度不足(拡大しすぎ)の判定は、この関数が返す`scale`(実効拡大率)を使って呼び出し側
+ * (`renderStamp.ts: computeStampWarnings`)が行う(追加修正指示書 項目12で2段階化したため)。
  */
 export function computeLayout(
   subjectWidth: number,
@@ -76,7 +74,6 @@ export function computeLayout(
     drawY,
     drawWidth,
     drawHeight,
-    isUpscaled: scale > UPSCALE_WARNING_THRESHOLD,
     isOverflowing,
   };
 }

@@ -2,7 +2,7 @@ import {
   createDefaultStampSetting,
   DEFAULT_GLOBAL_SETTINGS,
   DEFAULT_PREVIEW_SETTINGS,
-  isStampOverridden,
+  isStampModified,
   resolveStampAdjust as resolveStampAdjustFromSetting,
   type CellWarning,
   type CropAmount,
@@ -187,7 +187,11 @@ export const CROP_KEEP_TOLERANCE_PX = 5;
  * 2つの枠が、x・y・右端(x+width)・下端(y+height)のすべてにおいて`tolerancePx`以内の
  * 変化に収まっているか判定する。1辺でも超えていれば「変わった」とみなす。
  */
-function isRectWithinTolerance(a: Rect | undefined, b: Rect | undefined, tolerancePx: number): boolean {
+function isRectWithinTolerance(
+  a: Rect | undefined,
+  b: Rect | undefined,
+  tolerancePx: number,
+): boolean {
   if (!a || !b) {
     return false;
   }
@@ -272,7 +276,7 @@ export function getResolvedStampAdjust(project: ProjectState, index: number): St
 }
 
 export function isStampAdjusted(project: ProjectState, index: number): boolean {
-  return isStampOverridden(project.stamps[index], project.sheets[0]?.id ?? '');
+  return isStampModified(project.stamps[index], project.globalSettings);
 }
 
 /** 選択中スタンプの個別設定(crop以外)を部分更新する。 */

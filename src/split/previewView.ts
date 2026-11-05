@@ -1,11 +1,13 @@
 import { renderMainImage, renderTabImage } from '../export/coverImages';
-import { computeStampWarnings, renderStamp } from '../export/renderStamp';
+import { computeStampWarnings, renderStamp, type UpscaleLevel } from '../export/renderStamp';
 import {
+  summarizeUpscaleCaution,
   validateDimensions,
   validateEmptyCells,
   validateFileSize,
   validateMissingSourceSheet,
   validateOverflowingCells,
+  validateUpscaleWarning,
   type ValidationIssue,
 } from '../export/validate';
 import { buildFullZipFromBlobs, formatZipFileName } from '../export/zip';
@@ -64,7 +66,7 @@ import {
 } from './sheetMatch';
 import { addSheet, getSheetImage, type SheetStore } from './sheetStore';
 import { createSourcePicker, type SourceOption } from './sourcePicker';
-import { createStampCard, type StampCardHandle } from './stampCard';
+import { createStampCard, type StampCardHandle, type StampCardWarning } from './stampCard';
 import {
   DEFAULT_DETECTION_PARAMS,
   DEFAULT_GLOBAL_SETTINGS,
@@ -342,6 +344,16 @@ function hasOpaquePixels(image: ImageDataLike): boolean {
   return false;
 }
 
+/**
+ * 解像度不足の警告メッセージ(色だけに頼らず「注意:」「警告:」を文頭に付ける。追加修正指示書 項目12)。
+ * 拡大率は小数1桁に丸めて表示する(例: 「警告: 解像度不足の可能性(約1.7倍に拡大)」)。
+ */
+function formatUpscaleMessage(level: UpscaleLevel, scale: number): string {
+  const prefix = level === 'warning' ? '警告' : '注意';
+  const roundedScale = Math.round(scale * 10) / 10;
+  return `${prefix}: 解像度不足の可能性(約${roundedScale}倍に拡大)`;
+}
+
 function formatTimestamp(date: Date): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}`;
@@ -491,7 +503,7 @@ export function createPreviewView(
     card.setSourceBadge(sheet ? sheetLabel(sheet.id) : null);
 
     if (!sheet || !image || !frame) {
-      card.setWarnings(['採用元のシートが見つかりません']);
+      card.setWarnings([{ severity: 'warning', message: '採用元のシートが見つかりません' }]);
       return;
     }
 
@@ -514,18 +526,21 @@ export function createPreviewView(
     card.setCover(index === project.coverIndex);
     card.setAdjusted(isStampAdjusted(project, index));
 
-    const labels: string[] = [];
+    const warnings: StampCardWarning[] = [];
     if (!hasOpaquePixels(rendered)) {
-      labels.push('空(内容なし)');
+      warnings.push({ severity: 'warning', message: '空(内容なし)' });
     }
     const layoutWarnings = computeStampWarnings(frame, resolved, project.globalSettings);
-    if (layoutWarnings.isUpscaled) {
-      labels.push('解像度不足の可能性');
+    if (layoutWarnings.upscaleLevel !== 'none') {
+      warnings.push({
+        severity: layoutWarnings.upscaleLevel,
+        message: formatUpscaleMessage(layoutWarnings.upscaleLevel, layoutWarnings.scale),
+      });
     }
     if (layoutWarnings.isOverflowing) {
-      labels.push('配置がキャンバスからはみ出し');
+      warnings.push({ severity: 'warning', message: '配置がキャンバスからはみ出し' });
     }
-    card.setWarnings(labels);
+    card.setWarnings(warnings);
 
     if (index === project.coverIndex) {
       refreshCoverPreview();
@@ -844,15 +859,22 @@ export function createPreviewView(
   });
 
   const exportIssueList = h('ul', { className: 'warning-list' });
-  function renderExportIssues(issues: ValidationIssue[]): void {
+  /**
+   * `cautionSummaries`(「注意: n枚が…」のような件数のみの案内)は、`issues`とは別に渡す。
+   * 書き出し確認ダイアログの件数カウント(allIssues.length)には含めない(追加修正指示書 項目12)。
+   */
+  function renderExportIssues(issues: ValidationIssue[], cautionSummaries: string[] = []): void {
     exportIssueList.replaceChildren();
-    if (issues.length === 0) {
+    if (issues.length === 0 && cautionSummaries.length === 0) {
       exportIssueList.append(
         h('li', { className: 'warning-list__empty', text: '問題は見つかりませんでした。' }),
       );
       return;
     }
     issues.forEach((issue) => exportIssueList.append(h('li', { text: issue.message })));
+    cautionSummaries.forEach((message) =>
+      exportIssueList.append(h('li', { className: 'warning-list__caution', text: message })),
+    );
   }
 
   function buildSourcesText(currentProject: ProjectState): string {
@@ -885,6 +907,8 @@ export function createPreviewView(
       const emptyIndexes: number[] = [];
       const overflowingIndexes: number[] = [];
       const missingSourceIndexes: number[] = [];
+      const upscaleWarningIndexes: number[] = [];
+      let upscaleCautionCount = 0;
       const images: ImageDataLike[] = [];
       const dimensionIssues: ValidationIssue[] = [];
 
@@ -912,8 +936,14 @@ export function createPreviewView(
         if (!hasOpaquePixels(rendered)) {
           emptyIndexes.push(index);
         }
-        if (computeStampWarnings(frame, resolved, currentProject.globalSettings).isOverflowing) {
+        const stampWarnings = computeStampWarnings(frame, resolved, currentProject.globalSettings);
+        if (stampWarnings.isOverflowing) {
           overflowingIndexes.push(index);
+        }
+        if (stampWarnings.upscaleLevel === 'warning') {
+          upscaleWarningIndexes.push(index);
+        } else if (stampWarnings.upscaleLevel === 'caution') {
+          upscaleCautionCount += 1;
         }
         dimensionIssues.push(
           ...validateDimensions(
@@ -1002,11 +1032,15 @@ export function createPreviewView(
         ...validateMissingSourceSheet(missingSourceIndexes),
         ...validateEmptyCells(emptyIndexes.filter((i) => !missingSourceIndexes.includes(i))),
         ...validateOverflowingCells(overflowingIndexes),
+        ...validateUpscaleWarning(upscaleWarningIndexes),
         ...dimensionIssues,
         ...sizeIssues,
         ...coverIssues,
       ];
-      renderExportIssues(allIssues);
+      // 解像度不足の「注意」段階は件数のみの案内とし、確認ダイアログの件数カウント(allIssues)には
+      // 含めない(本当に危ない警告〈allIssues〉が埋もれないようにする。追加修正指示書 項目12)。
+      const cautionSummary = summarizeUpscaleCaution(upscaleCautionCount);
+      renderExportIssues(allIssues, cautionSummary ? [cautionSummary] : []);
 
       if (allIssues.length > 0) {
         const preview = allIssues

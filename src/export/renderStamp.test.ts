@@ -3,8 +3,10 @@ import {
   compositeOntoCanvas,
   computeEffectiveFrame,
   computeStampWarnings,
+  computeUpscaleLevel,
   cropWithForcedBackground,
 } from './renderStamp';
+import { UPSCALE_CAUTION_THRESHOLD, UPSCALE_WARNING_THRESHOLD } from '../shared/lineSpec';
 import { createSolidImage, fillRect } from '../split/testUtils';
 import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_STAMP_ADJUST } from '../split/types';
 
@@ -123,18 +125,53 @@ describe('computeEffectiveFrame', () => {
   });
 });
 
+describe('computeUpscaleLevel(解像度不足警告の2段階化、追加修正指示書 項目12)', () => {
+  it('しきい値を変えると結果が追従する(定数自体を参照して判定している)', () => {
+    expect(computeUpscaleLevel(1)).toBe('none');
+    expect(computeUpscaleLevel(UPSCALE_CAUTION_THRESHOLD)).toBe('none'); // ちょうどは超えていない
+    expect(computeUpscaleLevel(UPSCALE_CAUTION_THRESHOLD + 0.01)).toBe('caution');
+    expect(computeUpscaleLevel(UPSCALE_WARNING_THRESHOLD)).toBe('caution'); // ちょうどは超えていない
+    expect(computeUpscaleLevel(UPSCALE_WARNING_THRESHOLD + 0.01)).toBe('warning');
+  });
+
+  it('1.2倍は警告なし(none)', () => {
+    expect(computeUpscaleLevel(1.2)).toBe('none');
+  });
+
+  it('1.4倍は注意(caution)', () => {
+    expect(computeUpscaleLevel(1.4)).toBe('caution');
+  });
+
+  it('1.7倍は警告(warning)', () => {
+    expect(computeUpscaleLevel(1.7)).toBe('warning');
+  });
+});
+
 describe('computeStampWarnings', () => {
   it('標準設定では警告が出ない', () => {
     const frame = { x: 0, y: 0, width: 350, height: 300 };
     const warnings = computeStampWarnings(frame, DEFAULT_STAMP_ADJUST, DEFAULT_GLOBAL_SETTINGS);
-    expect(warnings.isUpscaled).toBe(false);
+    expect(warnings.upscaleLevel).toBe('none');
     expect(warnings.isOverflowing).toBe(false);
   });
 
-  it('被写体が小さいと拡大率が高くなり解像度不足警告が出る', () => {
-    const frame = { x: 0, y: 0, width: 50, height: 50 };
-    const warnings = computeStampWarnings(frame, DEFAULT_STAMP_ADJUST, DEFAULT_GLOBAL_SETTINGS);
-    expect(warnings.isUpscaled).toBe(true);
+  it('実効拡大率が1.3倍を超えると注意(caution)、1.6倍を超えると警告(warning)になる', () => {
+    const frame = { x: 0, y: 0, width: 350, height: 300 }; // 安全領域(350x300)と同サイズ=基準倍率1.0
+    const caution = computeStampWarnings(
+      frame,
+      { ...DEFAULT_STAMP_ADJUST, scale: 140 },
+      DEFAULT_GLOBAL_SETTINGS,
+    );
+    expect(caution.scale).toBeCloseTo(1.4);
+    expect(caution.upscaleLevel).toBe('caution');
+
+    const warning = computeStampWarnings(
+      frame,
+      { ...DEFAULT_STAMP_ADJUST, scale: 170 },
+      DEFAULT_GLOBAL_SETTINGS,
+    );
+    expect(warning.scale).toBeCloseTo(1.7);
+    expect(warning.upscaleLevel).toBe('warning');
   });
 
   it('大きなオフセットを指定すると、はみ出し警告が出る', () => {

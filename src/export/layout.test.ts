@@ -36,7 +36,6 @@ describe('computeLayout', () => {
     expect(result.drawHeight).toBeCloseTo(300);
     expect(result.drawX).toBeCloseTo(10);
     expect(result.drawY).toBeCloseTo(10);
-    expect(result.isUpscaled).toBe(false);
     expect(result.isOverflowing).toBe(false);
   });
 
@@ -68,13 +67,6 @@ describe('computeLayout', () => {
     expect(result.drawY + result.drawHeight).toBeCloseTo(
       settings.outputHeight - settings.innerMargin,
     );
-  });
-
-  it('拡大率が1.3倍を超えるとisUpscaledがtrueになる', () => {
-    const settings = { ...BASE_SETTINGS, scalePercent: 150 };
-    const result = computeLayout(350, 300, settings);
-    expect(result.scale).toBeCloseTo(1.5);
-    expect(result.isUpscaled).toBe(true);
   });
 
   it('大きな拡大率を指定すると内側の矩形からはみ出すことを許容する(クランプしない)', () => {

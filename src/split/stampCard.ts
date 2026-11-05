@@ -5,14 +5,24 @@ import type { ImageDataLike } from '../shared/types';
 
 const SIZE_DEBOUNCE_MS = 300;
 
+/** カードに出す警告1件。`severity`でバッジの色を決める(警告=赤、注意=黄。追加修正指示書 項目12)。 */
+export interface StampCardWarning {
+  severity: 'caution' | 'warning';
+  message: string;
+}
+
 export interface StampCardHandle {
   element: HTMLElement;
   setImage: (image: ImageDataLike) => void;
   setSelected: (selected: boolean) => void;
   setCover: (isCover: boolean) => void;
   setAdjusted: (isAdjusted: boolean) => void;
-  /** カードに出す警告の一覧(空なら警告アイコンを隠す)。ツールチップにそのまま使う。 */
-  setWarnings: (labels: string[]) => void;
+  /**
+   * カードに出す警告の一覧(空なら警告アイコンを隠す)。複数あれば、最も重い方の色を
+   * バッジに使う(`warning`があれば赤、なければ`caution`のみで黄)。ツールチップには
+   * メッセージをすべて並べる(色だけに頼らず文言でも段階が分かるようにする)。
+   */
+  setWarnings: (warnings: StampCardWarning[]) => void;
   /** 採用元シートのバッジ(例: 「S2」)。シートが1枚のときはnullを渡して隠す。 */
   setSourceBadge: (label: string | null) => void;
   getLastImage: () => ImageDataLike | null;
@@ -41,7 +51,7 @@ export function createStampCard(
   });
   adjustedDot.hidden = true;
   const warningBadge = h('span', {
-    className: 'stamp-card__badge stamp-card__badge--warning',
+    className: 'stamp-card__badge',
     text: '⚠',
   });
   warningBadge.hidden = true;
@@ -136,9 +146,12 @@ export function createStampCard(
     setAdjusted: (isAdjusted) => {
       adjustedDot.hidden = !isAdjusted;
     },
-    setWarnings: (labels) => {
-      warningBadge.hidden = labels.length === 0;
-      warningBadge.title = labels.join('、');
+    setWarnings: (warnings) => {
+      warningBadge.hidden = warnings.length === 0;
+      warningBadge.title = warnings.map((w) => w.message).join('、');
+      const hasWarning = warnings.some((w) => w.severity === 'warning');
+      warningBadge.classList.toggle('stamp-card__badge--warning', hasWarning);
+      warningBadge.classList.toggle('stamp-card__badge--caution', !hasWarning);
     },
     setSourceBadge: (label) => {
       sourceBadge.hidden = label === null;

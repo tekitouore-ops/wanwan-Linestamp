@@ -323,6 +323,47 @@ B-6仕様は「ファイル名・サイズでの自動対応づけ+手動割り�
 対して検出を行い`store`へ結果を書き込む関数に切り出し、複数ファイル追加時はループ内で追加した
 シートすべてに対してこれを呼ぶように変更した。
 
+## 2026-11-03: 背景色ピッカーに🎨の目印を追加(追加修正指示書 項目13)
+
+確認用背景の`<input type="color">`が、プリセットの白スウォッチと見分けづらいという指摘のため、
+右下に🎨の絵文字バッジを重ねて表示するようにした(`position: relative`な`.bg-picker__custom`で
+colorInputを包み、`.bg-picker__custom-badge`を絶対配置)。テキストラベル「カスタム」ではなく
+絵文字にしたのは、プリセットボタンと高さを揃えた横並びのツールバー内でスペースを取らないため。
+`aria-label`・`title`は両方「カスタム色を選ぶ」に設定した。
+
+## 2026-11-03: 解像度不足警告を2段階化し、確認ダイアログの件数カウントから「注意」を除外(追加修正指示書 項目12)
+
+生成シートの1マス(約256px)を規格サイズ(最大370×320)へ拡大すると、ほぼ全スタンプが旧しきい値
+(1.3倍)を超えてしまい、本当に危険な拡大(1.6倍超など)が赤い⚠の中に埋もれていた。しきい値を
+`shared/lineSpec.ts`に`UPSCALE_CAUTION_THRESHOLD`(1.3)・`UPSCALE_WARNING_THRESHOLD`(1.6)として
+定数化し、`export/layout.ts`の`isUpscaled`(真偽値)を廃止して`renderStamp.ts`の
+`computeUpscaleLevel(scale)`(`'none' | 'caution' | 'warning'`)に置き換えた。実効拡大率
+(`scale`)自体もStampWarningsに含め、カードのツールチップに「約1.4倍に拡大」のように表示する。
+
+- **層の分離**: `layout.ts`はしきい値を持たず`scale`だけを返す(警告段階の判定は呼び出し側の責務にした)。
+  しきい値を1箇所(lineSpec.ts)に保つという既存方針(修正指示書 項目5)と一致させるため。
+- **書き出し前検証**: 警告(1.6倍超)は`validateUpscaleWarning`で番号つきのValidationIssueとして
+  `allIssues`に含め、確認ダイアログの「○件の警告があります」のカウント対象にする。注意(1.3〜1.6倍)は
+  `summarizeUpscaleCaution`で件数のみの文言を返す、ValidationIssueではない別の戻り値にして、
+  `allIssues`(確認ダイアログの件数)には含めない。表示自体は`exportIssueList`に別枠
+  (`warning-list__caution`)で出すため、情報として見えなくはならない。
+
+## 2026-11-03: 「個別設定あり」ドットが採用元切替だけで付く不具合を修正(追加修正指示書 項目11)
+
+`types.ts: isStampOverridden`は、`sourceSheetId`が既定(先頭シート)と異なるだけでtrueを返し、
+さらに`adjust`/`cropBySheet`はキーの有無だけで判定していた(値が初期値と同じでもtrueになる)。
+採用元はS1/S2等のバッジで既に見分けられるため判定対象から外し、`isStampModified`に改名して、
+以下の基準に整理した。
+
+- `adjust`: キーごとに「実際の値」が初期値と異なるかで判定する。`outline`の初期値は固定値ではなく
+  `globalSettings.defaultOutline`(全体設定の既定値)なので、他のフィールド(`DEFAULT_STAMP_ADJUST`の
+  固定値)とは別に扱う。値を初期値に戻した場合、`adjust`オブジェクトにキー自体は残り続ける
+  (`updateStampAdjust`の実装はキーを消さない)が、ドット判定では「値が同じなら変更済みに含めない」
+  ことで解決し、キーを消す側の実装は変えなかった(影響範囲を小さくするため)。
+- `cropBySheet`: 全エントリではなく、現在の採用元シート(`sourceSheetId`)ぶんの値だけを見る
+  (`resolveStampAdjust`が実際に使う値と同じ基準)。過去に別シートを採用元にしていた時のcrop履歴が
+  残っていても、現在の採用元に対する値が全辺0なら変更済みとしない。
+
 ## 2026-11-03: 縁フチの仕様を再確認し、二重フチ・フラッドフィル消失への案内文を追加(修正指示書 項目8)
 
 `export/outline.ts`の`addWhiteOutline`は、もともと画像全体のアルファ>0の画素を多元BFSの起点に

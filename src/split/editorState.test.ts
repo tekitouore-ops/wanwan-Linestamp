@@ -295,9 +295,14 @@ describe('confirmSheets', () => {
     framesA[0] = { x: 4, y: 0, width: 10, height: 10 };
     const framesB = makeFrames(2);
     framesB[1] = { x: 999, y: 999, width: 10, height: 10 };
-    const confirmed = confirmSheets(state, [makeSheet('a', 'a.png', framesA), makeSheet('b', 'b.png', framesB)]);
+    const confirmed = confirmSheets(state, [
+      makeSheet('a', 'a.png', framesA),
+      makeSheet('b', 'b.png', framesB),
+    ]);
 
-    expect(confirmed.stamps[0]?.cropBySheet).toEqual({ a: { top: 2, right: 0, bottom: 0, left: 0 } });
+    expect(confirmed.stamps[0]?.cropBySheet).toEqual({
+      a: { top: 2, right: 0, bottom: 0, left: 0 },
+    });
     expect(confirmed.stamps[1]?.cropBySheet).toEqual({});
   });
 
@@ -367,10 +372,53 @@ describe('ProjectStateの個別設定・全体設定・表紙・プレビュー'
     state = setStampSource(state, 0, 'b');
     expect(state.stamps[0]?.sourceSheetId).toBe('b');
     expect(state.stamps[0]?.cropBySheet).toEqual({ a: { top: 1, right: 0, bottom: 0, left: 0 } });
-    expect(isStampAdjusted(state, 0)).toBe(true); // 採用元が既定(先頭シート)と異なるため
+    // 採用元を切り替えただけ(bには個別のcropがない)なので、変更済みにはならない(追加修正指示書 項目11)。
+    expect(isStampAdjusted(state, 0)).toBe(false);
 
     const backToA = setStampSource(state, 0, 'a');
     expect(backToA.stamps[0]?.cropBySheet).toEqual({ a: { top: 1, right: 0, bottom: 0, left: 0 } });
+    // aに戻すと、aぶんのcrop(非ゼロ)が再び有効になるため変更済みになる。
+    expect(isStampAdjusted(backToA, 0)).toBe(true);
+  });
+
+  describe('isStampAdjusted(「個別設定あり」ドットの判定、追加修正指示書 項目11)', () => {
+    it('採用元だけ変えたスタンプは変更済みにならない', () => {
+      const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+      const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+      const state = setStampSource(confirmSheets(null, [sheetA, sheetB]), 0, 'b');
+      expect(isStampAdjusted(state, 0)).toBe(false);
+    });
+
+    it('スライダー(adjust)を初期値から動かすと変更済みになる', () => {
+      const state = updateStampAdjust(makeProjectState(), 0, { scale: 120 });
+      expect(isStampAdjusted(state, 0)).toBe(true);
+    });
+
+    it('値を初期値に戻すと変更済みでなくなる(adjustのキー自体は残っていてもよい)', () => {
+      let state = updateStampAdjust(makeProjectState(), 0, { scale: 120 });
+      state = updateStampAdjust(state, 0, { scale: 100 });
+      expect(state.stamps[0]?.adjust).toEqual({ scale: 100 }); // キーは残る
+      expect(isStampAdjusted(state, 0)).toBe(false);
+    });
+
+    it('縁フチ(outline)は、全体設定の既定値と同じなら変更済みにならない', () => {
+      const withGlobalOutline = updateGlobalSettings(makeProjectState(), { defaultOutline: 6 });
+      const state = updateStampAdjust(withGlobalOutline, 0, { outline: 6 });
+      expect(isStampAdjusted(state, 0)).toBe(false);
+    });
+
+    it('cropを設定すると変更済みになり、全辺を0に戻すと解除される', () => {
+      let state = updateStampCrop(makeProjectState(), 0, {
+        top: 3,
+        right: 0,
+        bottom: 0,
+        left: 0,
+      });
+      expect(isStampAdjusted(state, 0)).toBe(true);
+
+      state = updateStampCrop(state, 0, { top: 0, right: 0, bottom: 0, left: 0 });
+      expect(isStampAdjusted(state, 0)).toBe(false);
+    });
   });
 
   it('resetStampAdjustは個別設定を解除し、先頭シート採用に戻す', () => {
