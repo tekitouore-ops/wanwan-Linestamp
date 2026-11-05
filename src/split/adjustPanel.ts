@@ -105,6 +105,21 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     onChange: (v) => callbacks.onGlobalSettingsChange({ defaultOutline: v }),
     onCommit: () => callbacks.onCommit(),
   });
+  const defaultGhostRemovalSlider = createSliderField({
+    label: 'ゴミ除去(半透明の白)の既定値',
+    unit: '%',
+    min: 0,
+    max: 50,
+    step: 1,
+    value: DEFAULT_GLOBAL_SETTINGS.defaultGhostRemoval,
+    defaultValue: DEFAULT_GLOBAL_SETTINGS.defaultGhostRemoval,
+    onChange: (v) => callbacks.onGlobalSettingsChange({ defaultGhostRemoval: v }),
+    onCommit: () => callbacks.onCommit(),
+  });
+  const ghostRemovalHint = h('p', {
+    className: 'field__hint',
+    text: '被写体の周りに、白いもやが残るときに上げてください。上げすぎると、被写体の縁が削れます。黒背景で確認すると分かりやすいです。',
+  });
   const alphaThresholdSlider = createSliderField({
     label: '透過しきい値',
     min: 1,
@@ -167,6 +182,8 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     outputHeightSlider.element,
     innerMarginSlider.element,
     defaultOutlineSlider.element,
+    defaultGhostRemovalSlider.element,
+    ghostRemovalHint,
     alphaThresholdSlider.element,
     alphaThresholdHint,
     featherSlider.element,
@@ -180,6 +197,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     outputHeightSlider.setValue(settings.outputHeight);
     innerMarginSlider.setValue(settings.innerMargin);
     defaultOutlineSlider.setValue(settings.defaultOutline);
+    defaultGhostRemovalSlider.setValue(settings.defaultGhostRemoval);
     alphaThresholdSlider.setValue(settings.alphaThreshold);
     featherSlider.setValue(settings.featherPx);
     alignSelect.value = settings.align;
@@ -189,11 +207,12 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
   // ---- 「全体に適用…」ダイアログ(1度だけ作る) ----
 
   const applyFieldCheckboxes: Record<
-    'edgeFix' | 'outline' | 'scale' | 'position',
+    'edgeFix' | 'outline' | 'ghostRemoval' | 'scale' | 'position',
     HTMLInputElement
   > = {
     edgeFix: h('input', { attrs: { type: 'checkbox' } }),
     outline: h('input', { attrs: { type: 'checkbox' } }),
+    ghostRemoval: h('input', { attrs: { type: 'checkbox' } }),
     scale: h('input', { attrs: { type: 'checkbox' } }),
     position: h('input', { attrs: { type: 'checkbox' } }),
   };
@@ -210,6 +229,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
     h('div', { className: 'apply-all-dialog__fields' }, [
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.edgeFix, ' 縁補正']),
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.outline, ' 縁フチ']),
+      h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.ghostRemoval, ' ゴミ除去']),
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.scale, ' 拡大']),
       h('label', { className: 'checkbox-field' }, [applyFieldCheckboxes.position, ' 位置(横・縦)']),
     ]),
@@ -233,6 +253,7 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
             const fields: (keyof StampAdjustFields)[] = [];
             if (applyFieldCheckboxes.edgeFix.checked) fields.push('edgeFix');
             if (applyFieldCheckboxes.outline.checked) fields.push('outline');
+            if (applyFieldCheckboxes.ghostRemoval.checked) fields.push('ghostRemoval');
             if (applyFieldCheckboxes.scale.checked) fields.push('scale');
             if (applyFieldCheckboxes.position.checked) fields.push('offsetX', 'offsetY');
             callbacks.onApplyToAll(currentIndex, fields);
@@ -288,6 +309,22 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
         updateOutlineBackgroundModeHint(v);
       },
       onCommit: () => callbacks.onCommit(),
+    });
+
+    const ghostRemovalSlider = createSliderField({
+      label: 'ゴミ除去(半透明の白)',
+      unit: '%',
+      min: 0,
+      max: 50,
+      step: 1,
+      value: resolved.ghostRemoval,
+      defaultValue: currentGlobalSettings.defaultGhostRemoval,
+      onChange: (v) => callbacks.onAdjustChange(index, { ghostRemoval: v }),
+      onCommit: () => callbacks.onCommit(),
+    });
+    const ghostRemovalStampHint = h('p', {
+      className: 'field__hint',
+      text: '被写体の周りに、白いもやが残るときに上げてください。上げすぎると、被写体の縁が削れます。黒背景で確認すると分かりやすいです。',
     });
 
     const cropTopMax = cropMax(frame.height);
@@ -405,6 +442,8 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       outlineSlider.element,
       outlineHint,
       outlineBackgroundModeHint,
+      ghostRemovalSlider.element,
+      ghostRemovalStampHint,
       h('h4', { className: 'split-section-heading', text: '切り抜き' }),
       cropTopSlider.element,
       cropRightSlider.element,

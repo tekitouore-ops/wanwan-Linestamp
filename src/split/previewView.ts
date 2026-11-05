@@ -11,6 +11,7 @@ import {
   type ValidationIssue,
 } from '../export/validate';
 import { buildFullZipFromBlobs, formatZipFileName } from '../export/zip';
+import { pickTextColor } from '../shared/color';
 import { h, isEditableEventTarget } from '../shared/dom';
 import { downloadBlob, downloadTextFile, openFilePicker } from '../shared/file';
 import { imageDataLikeToPngBlob, loadImageDataFromFile } from '../shared/imageData';
@@ -86,6 +87,10 @@ import {
 const PREVIEW_STORAGE_KEY = 'wanwan-linestamp:split-preview-background:v1';
 const RENDER_ALL_DEBOUNCE_MS = 200;
 const FALLBACK_BACKGROUND_COLOR: RGB = { r: 255, g: 255, b: 255 };
+/** 拡大プレビュー(追加修正指示書 第3弾 項目16)の表示上限。実寸〜最大2倍、かつこのpx数まで。 */
+const LARGE_PREVIEW_MAX_SCALE = 2;
+const LARGE_PREVIEW_MAX_WIDTH = 260;
+const LARGE_PREVIEW_MAX_HEIGHT = 240;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -144,6 +149,7 @@ function parseAdjustFields(value: unknown): Partial<StampAdjustFields> {
   const result: Partial<StampAdjustFields> = {};
   if (typeof value.edgeFix === 'number') result.edgeFix = value.edgeFix;
   if (typeof value.outline === 'number') result.outline = value.outline;
+  if (typeof value.ghostRemoval === 'number') result.ghostRemoval = value.ghostRemoval;
   if (typeof value.scale === 'number') result.scale = value.scale;
   if (typeof value.offsetX === 'number') result.offsetX = value.offsetX;
   if (typeof value.offsetY === 'number') result.offsetY = value.offsetY;
@@ -161,6 +167,10 @@ function parseGlobalSettings(value: unknown): GlobalSettings {
     innerMargin: typeof value.innerMargin === 'number' ? value.innerMargin : g.innerMargin,
     defaultOutline:
       typeof value.defaultOutline === 'number' ? value.defaultOutline : g.defaultOutline,
+    defaultGhostRemoval:
+      typeof value.defaultGhostRemoval === 'number'
+        ? value.defaultGhostRemoval
+        : g.defaultGhostRemoval,
     alphaThreshold:
       typeof value.alphaThreshold === 'number' ? value.alphaThreshold : g.alphaThreshold,
     featherPx: typeof value.featherPx === 'number' ? value.featherPx : g.featherPx,
@@ -424,6 +434,7 @@ export function createPreviewView(
     }
     selectedIndex = index;
     cards.forEach((card, i) => card.setSelected(i === index));
+    updateLargePreview(cards[index]?.getLastImage() ?? null);
     const frame = getStampFrame(project, index);
     if (!frame) {
       adjustPanel.showEmpty();
@@ -504,6 +515,9 @@ export function createPreviewView(
 
     if (!sheet || !image || !frame) {
       card.setWarnings([{ severity: 'warning', message: '採用元のシートが見つかりません' }]);
+      if (index === selectedIndex) {
+        updateLargePreview(null);
+      }
       return;
     }
 
@@ -525,6 +539,9 @@ export function createPreviewView(
     card.setImage(rendered);
     card.setCover(index === project.coverIndex);
     card.setAdjusted(isStampAdjusted(project, index));
+    if (index === selectedIndex) {
+      updateLargePreview(rendered);
+    }
 
     const warnings: StampCardWarning[] = [];
     if (!hasOpaquePixels(rendered)) {
@@ -566,9 +583,19 @@ export function createPreviewView(
     if (preview.mode === 'checker') {
       cardsGrid.classList.add('preview-grid--checker');
       cardsGrid.style.backgroundColor = '';
+      // 市松模様のときは、従来どおり暗い文字のまま(修正指示書 項目14参照)。
+      cardsGrid.style.removeProperty('--preview-fg');
+      cardsGrid.style.removeProperty('--preview-fg-muted');
+      largePreviewWrapper.classList.add('preview-grid--checker');
+      largePreviewWrapper.style.backgroundColor = '';
     } else {
       cardsGrid.classList.remove('preview-grid--checker');
       cardsGrid.style.backgroundColor = preview.color;
+      const { fg, fgMuted } = pickTextColor(preview.color);
+      cardsGrid.style.setProperty('--preview-fg', fg);
+      cardsGrid.style.setProperty('--preview-fg-muted', fgMuted);
+      largePreviewWrapper.classList.remove('preview-grid--checker');
+      largePreviewWrapper.style.backgroundColor = preview.color;
     }
   }
 
@@ -808,6 +835,39 @@ export function createPreviewView(
       },
     },
   });
+
+  const largePreviewCanvas = h('canvas', { className: 'large-preview__canvas' });
+  const largePreviewWrapper = h(
+    'div',
+    { className: 'large-preview__wrapper preview-grid--checker' },
+    [largePreviewCanvas],
+  );
+  const largePreviewGroup = h('div', { className: 'cover-preview__item' }, [
+    largePreviewWrapper,
+    h('span', { text: '選択中の拡大プレビュー(確認用背景の上に実寸〜2倍で表示)' }),
+  ]);
+
+  /**
+   * 選択中の1枚を、確認用背景の上に実寸〜2倍で拡大表示する(白フチ・ゴミの残りを確認しやすくする
+   * ため。追加修正指示書 第3弾 項目16)。選択が変わる・調整内容が変わるたびに更新する。
+   */
+  function updateLargePreview(image: ImageDataLike | null): void {
+    if (!image) {
+      largePreviewCanvas.width = 0;
+      largePreviewCanvas.height = 0;
+      largePreviewCanvas.style.width = '0px';
+      largePreviewCanvas.style.height = '0px';
+      return;
+    }
+    drawToCanvas(largePreviewCanvas, image);
+    const scale = Math.min(
+      LARGE_PREVIEW_MAX_SCALE,
+      LARGE_PREVIEW_MAX_WIDTH / image.width,
+      LARGE_PREVIEW_MAX_HEIGHT / image.height,
+    );
+    largePreviewCanvas.style.width = `${Math.round(image.width * scale)}px`;
+    largePreviewCanvas.style.height = `${Math.round(image.height * scale)}px`;
+  }
 
   const mainPreviewCanvas = h('canvas', {
     className: 'cover-preview__canvas cover-preview__canvas--main',
@@ -1239,6 +1299,7 @@ export function createPreviewView(
   const topBar = h('div', { className: 'preview-topbar' }, [
     h('div', { className: 'toolbar' }, [fixFramesButton, undoButton, redoButton]),
     backgroundPicker.element,
+    largePreviewGroup,
     coverPreviewGroup,
     includeTabImageField,
     includeSourcesTextField,

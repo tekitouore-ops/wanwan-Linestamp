@@ -673,6 +673,11 @@ body {
   padding: 16px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
+  /* 確認用背景の明るさに応じてJS側(pickTextColor)が書き換える。市松/既定は暗い文字。
+     カード内のファイル名・容量・「選択」ボタンだけに効かせ、左パネル等には影響しない
+     (追加修正指示書 項目14)。 */
+  --preview-fg: var(--color-text);
+  --preview-fg-muted: var(--color-text-muted);
 }
 
 .preview-grid--checker {
@@ -719,6 +724,8 @@ body {
   border-radius: 6px;
   padding: 6px;
   border: 2px solid transparent;
+  /* 確認用背景(市松/指定色)がそのまま透けて見えるよう、カード自体には塗りを持たせない。 */
+  background: transparent;
 }
 
 .stamp-card:focus-visible {
@@ -727,8 +734,13 @@ body {
 }
 
 .stamp-card--selected {
+  /* 背景の塗りは使わず、枠線だけで選択中を示す(修正指示書 項目14: 黒背景で白フチを
+     確認する機能なのに、選択で明るい背景が乗って確認できなくなっていた不具合の修正)。
+     背景が黒でも白でも見えるよう、内側に白・外側にアクセント色の二重線にする。 */
   border-color: var(--color-accent);
-  background: #fdf8f1;
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px var(--color-accent);
 }
 
 .stamp-card__canvas-wrapper {
@@ -797,7 +809,11 @@ body {
   align-items: center;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: var(--color-text-muted);
+  color: var(--preview-fg-muted);
+}
+
+.stamp-card .button--text {
+  color: var(--preview-fg);
 }
 
 .stamp-card__name {
@@ -900,6 +916,23 @@ body {
 .cover-preview__canvas--tab {
   width: 96px;
   height: 74px;
+}
+
+/* ---- タブ②: 選択中の拡大プレビュー(追加修正指示書 第3弾 項目16) ---- */
+
+.large-preview__wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 260px;
+  height: 240px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.large-preview__canvas {
+  display: block;
 }
 
 /* ---- タブ②: 全体に適用ダイアログ ---- */
