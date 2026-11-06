@@ -94,6 +94,12 @@ export function remapProjectIds(
           crop,
         ]),
       ),
+      eraseMaskBySheet: Object.fromEntries(
+        Object.entries(setting.eraseMaskBySheet).map(([sheetId, mask]) => [
+          idMap.get(sheetId) ?? sheetId,
+          mask,
+        ]),
+      ),
     })),
   };
 }

@@ -1,9 +1,10 @@
 import { resizeImageDataLike } from '../shared/imageData';
 import { UPSCALE_CAUTION_THRESHOLD, UPSCALE_WARNING_THRESHOLD } from '../shared/lineSpec';
 import type { ImageDataLike, RGB } from '../shared/types';
-import type { BackgroundMode, GlobalSettings, Rect, StampAdjust } from '../split/types';
+import type { BackgroundMode, EraseMask, GlobalSettings, Rect, StampAdjust } from '../split/types';
 import { keepOriginalAlpha, removeBackground } from './alpha';
 import { applyEdgeFix } from './edge';
+import { alignEraseMaskToCrop, applyEraseMask } from './erase';
 import { removeGhost } from './ghost';
 import { computeLayout, roundToEven, type LayoutResult } from './layout';
 import { addWhiteOutline } from './outline';
@@ -129,6 +130,7 @@ export function renderStamp(
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
   backgroundMode: BackgroundMode = 'color',
+  eraseMask?: EraseMask | null,
 ): ImageDataLike {
   const outputWidth = Math.max(2, roundToEven(globalSettings.outputWidth));
   const outputHeight = Math.max(2, roundToEven(globalSettings.outputHeight));
@@ -151,9 +153,22 @@ export function renderStamp(
           globalSettings.alphaThreshold,
           globalSettings.featherPx,
         );
-  // ゴミ除去(半透明のもや)は、背景透過の直後・縁補正の前に適用する(追加修正指示書 第3弾
+  // 手動消しゴム(追加修正指示書 第5弾 項目19)は、背景透過の直後・ゴミ除去の前に適用する。
+  // マスクはシート絶対座標で保存されているため、切り出し範囲(cropWithForcedBackgroundと
+  // 同じ計算)に合わせてローカル座標へ変換してから適用する。
+  const cropOriginX = Math.round(effectiveFrame.x) - marginPx;
+  const cropOriginY = Math.round(effectiveFrame.y) - marginPx;
+  const alignedMask = alignEraseMaskToCrop(
+    eraseMask,
+    cropOriginX,
+    cropOriginY,
+    cropped.width,
+    cropped.height,
+  );
+  const erased = applyEraseMask(matted, alignedMask);
+  // ゴミ除去(半透明のもや)は、消しゴムの直後・縁補正の前に適用する(追加修正指示書 第3弾
   // 項目15、第5弾 項目18で色を問わない判定に拡張)。
-  const deghosted = removeGhost(matted, {
+  const deghosted = removeGhost(erased, {
     alphaMax: Math.round((adjust.ghostRemoval / 100) * 255),
     protectEdgePx: adjust.ghostProtectEdgePx,
   });

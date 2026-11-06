@@ -171,17 +171,33 @@ export interface Sheet {
 }
 
 /**
+ * 手動消しゴムの消去マスク(追加修正指示書 第5弾 項目19)。シート画像上の絶対座標(`x`・`y`)に
+ * 位置する`width`×`height`の1チャンネルデータ。各値は0(そのまま)〜255(完全に消去)で、
+ * 中間値はアルファの減衰率として使う(ブラシの縁をなめらかにするため)。座標系をシート画像の
+ * 絶対座標で持つことで、切り抜き(crop)量を変えても位置がずれにくい。
+ */
+export interface EraseMask {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+/**
  * スタンプ番号ごとの個別設定。`sourceSheetId` でどのシートの同じ番号の枠を採用するかを指し、
  * `adjust`(crop以外)は採用元を切り替えても引き継ぎ、`cropBySheet` は採用元シートごとに別々に持つ。
+ * `eraseMaskBySheet`(手動消しゴムのマスク)も、`cropBySheet`と同様に採用元シートごとに別々に持つ。
  */
 export interface StampSetting {
   sourceSheetId: string;
   adjust: Partial<StampAdjustFields>;
   cropBySheet: Record<string, CropAmount>;
+  eraseMaskBySheet: Record<string, EraseMask>;
 }
 
 export function createDefaultStampSetting(sourceSheetId: string): StampSetting {
-  return { sourceSheetId, adjust: {}, cropBySheet: {} };
+  return { sourceSheetId, adjust: {}, cropBySheet: {}, eraseMaskBySheet: {} };
 }
 
 /** タブ②ステップBの作業状態。設定JSONとして保存/読込できる(画像本体は含めない)。 */
@@ -254,6 +270,11 @@ export function isStampModified(
     activeCrop.bottom !== 0 ||
     activeCrop.left !== 0
   ) {
+    return true;
+  }
+
+  const activeMask = setting.eraseMaskBySheet[setting.sourceSheetId];
+  if (activeMask && activeMask.data.some((v) => v > 0)) {
     return true;
   }
 

@@ -43,6 +43,7 @@ import {
 } from './history';
 import {
   applyAdjustToAll,
+  getActiveEraseMask,
   getResolvedStampAdjust,
   getSourceSheet,
   getStampFrame,
@@ -264,6 +265,8 @@ function parseProjectStateV2(value: unknown): ProjectState | null {
       sourceSheetId: raw.sourceSheetId,
       adjust: parseAdjustFields(raw.adjust),
       cropBySheet: parseCropBySheet(raw.cropBySheet),
+      // マスクのPNG保存/読込は追加修正指示書 第5弾 項目19-cで実装する。
+      eraseMaskBySheet: {},
     };
   });
 
@@ -309,6 +312,7 @@ function migrateProjectStateV1(value: Record<string, unknown>): ProjectState | n
       sourceSheetId: sheetId,
       adjust: parseAdjustFields(legacyAdjust),
       cropBySheet,
+      eraseMaskBySheet: {},
     };
   });
 
@@ -479,6 +483,7 @@ export function createPreviewView(
     }
     const resolved = getResolvedStampAdjust(project, project.coverIndex);
     const backgroundColor = sheet.detectSettings.backgroundColor ?? FALLBACK_BACKGROUND_COLOR;
+    const eraseMask = getActiveEraseMask(project, project.coverIndex);
     try {
       drawToCanvas(
         mainPreviewCanvas,
@@ -489,6 +494,7 @@ export function createPreviewView(
           project.globalSettings,
           resolved,
           sheet.detectSettings.backgroundMode,
+          eraseMask,
         ),
       );
       drawToCanvas(
@@ -500,6 +506,7 @@ export function createPreviewView(
           project.globalSettings,
           resolved,
           sheet.detectSettings.backgroundMode,
+          eraseMask,
         ),
       );
     } catch {
@@ -539,6 +546,7 @@ export function createPreviewView(
         project.globalSettings,
         resolved,
         sheet.detectSettings.backgroundMode,
+        getActiveEraseMask(project, index),
       );
     } catch {
       return;
@@ -784,6 +792,7 @@ export function createPreviewView(
           sourceSheetId: sheet.id,
           adjust: setting?.adjust ?? {},
           cropBySheet: setting?.cropBySheet ?? {},
+          eraseMaskBySheet: setting?.eraseMaskBySheet ?? {},
         };
         const resolved = getResolvedStampAdjust(
           {
@@ -803,6 +812,7 @@ export function createPreviewView(
               current.globalSettings,
               resolved,
               sheet.detectSettings.backgroundMode,
+              candidateSetting.eraseMaskBySheet[sheet.id],
             ),
           };
         } catch {
@@ -998,6 +1008,7 @@ export function createPreviewView(
           currentProject.globalSettings,
           resolved,
           sheet.detectSettings.backgroundMode,
+          setting.eraseMaskBySheet[setting.sourceSheetId],
         );
         images[index] = rendered;
         if (!hasOpaquePixels(rendered)) {
@@ -1042,6 +1053,7 @@ export function createPreviewView(
       if (coverSheet && coverImage && coverFrame) {
         const backgroundColor =
           coverSheet.detectSettings.backgroundColor ?? FALLBACK_BACKGROUND_COLOR;
+        const coverEraseMask = getActiveEraseMask(currentProject, currentProject.coverIndex);
         const mainImage = renderMainImage(
           coverImage,
           coverFrame,
@@ -1049,6 +1061,7 @@ export function createPreviewView(
           currentProject.globalSettings,
           coverResolved,
           coverSheet.detectSettings.backgroundMode,
+          coverEraseMask,
         );
         const mainBlob = await imageDataLikeToPngBlob(mainImage);
         extraFiles[MAIN_IMAGE_FILE_NAME] = mainBlob;
@@ -1072,6 +1085,7 @@ export function createPreviewView(
             currentProject.globalSettings,
             coverResolved,
             coverSheet.detectSettings.backgroundMode,
+            coverEraseMask,
           );
           const tabBlob = await imageDataLikeToPngBlob(tabImage);
           extraFiles[TAB_IMAGE_FILE_NAME] = tabBlob;
