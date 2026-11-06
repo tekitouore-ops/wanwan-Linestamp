@@ -151,8 +151,18 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
    そのまま編集対象にする(`cropWithForcedBackground`・`removeBackground`/`keepOriginalAlpha`を
    本番と同じ計算で呼ぶ)。作業用画像の原点(シート絶対座標)がそのままマスクの原点になるため、
    編集中は座標変換なしでローカルのマスク配列を直接書き換えられる。ブラシのスタンプ適用・補間は
-   `split/eraseBrush.ts`に純粋関数として切り出す(ユニットテスト対象)。設定JSONへの保存/読込は
-   項目19-cで追加予定(2026-11-06、追加修正指示書 第5弾 項目19-b)。
+   `split/eraseBrush.ts`に純粋関数として切り出す(ユニットテスト対象。2026-11-06、追加修正指示書
+   第5弾 項目19-b)。設定JSONへの保存/読込(`split/eraseMaskCodec.ts`)は、`Uint8ClampedArray`を
+   そのまま`JSON.stringify`すると巨大化するため、1チャンネル(グレースケール)PNGに変換して
+   `canvas.toDataURL('image/png')`でBase64化する(`encodeEraseMask`)。保存側はCanvas APIなので
+   同期処理のまま、読込側は`createImageBitmap`を使うため非同期になり、`parseProjectStateV2`
+   (`previewView.ts`)もこれに合わせて非同期にした。すべて0(未編集)のマスクはキー自体を省略し、
+   `isStampModified`(マスクが非空なら変更済み扱い)と矛盾しないようにしている。デコードしたPNGの
+   `width`・`height`が保存メタ情報と一致しない場合は、そのシートぶんのマスクだけ破棄し、
+   スタンプ単位・シート単位で読み込みを継続する(1枚壊れていても他のスタンプ・他の設定まで
+   読み込めなくなるのを避ける)。`shared/imageData.ts`にPNGエンコード/デコードの薄いラッパー
+   (`grayscaleToPngDataUrl`/`pngDataUrlToGrayscale`)を追加し、Canvas依存はそこに閉じ込めている
+   (2026-11-06、追加修正指示書 第5弾 項目19-c)。
 4. **ゴミ除去(ghost.ts)**: 消しゴムの直後に適用する(2026-11-05、追加修正指示書 第3弾 項目15、
    第5弾 項目18で色を問わない判定に拡張)。`StampAdjust.ghostRemoval`(0〜60%)をアルファ(0〜255)
    のしきい値(`alphaMax`)に変換し、アルファがそれ以下の画素を、色を問わず除去候補にする。

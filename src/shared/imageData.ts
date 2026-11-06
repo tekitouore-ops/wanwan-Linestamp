@@ -96,6 +96,50 @@ export function resizeImageDataLike(
   return { width: imageData.width, height: imageData.height, data: imageData.data };
 }
 
+/**
+ * 1チャンネル(グレースケール)のUint8ClampedArrayを、PNG形式のdata URL(base64)に変換する。
+ * 手動消しゴムのマスクを設定JSONへ保存する用途(`split/eraseMaskCodec.ts`)で使う。
+ */
+export function grayscaleToPngDataUrl(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number,
+): string {
+  const ctx = createContext2D(width, height);
+  const rgba = new Uint8ClampedArray(width * height * 4);
+  for (let p = 0; p < width * height; p += 1) {
+    const v = data[p] ?? 0;
+    const i = p * 4;
+    rgba[i] = v;
+    rgba[i + 1] = v;
+    rgba[i + 2] = v;
+    rgba[i + 3] = 255;
+  }
+  ctx.putImageData(new ImageData(rgba, width, height), 0, 0);
+  return ctx.canvas.toDataURL('image/png');
+}
+
+/** `grayscaleToPngDataUrl`の逆変換。PNGのR成分を1チャンネルの値として読み出す。 */
+export async function pngDataUrlToGrayscale(
+  dataUrl: string,
+): Promise<{ width: number; height: number; data: Uint8ClampedArray }> {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const ctx = createContext2D(bitmap.width, bitmap.height);
+    ctx.drawImage(bitmap, 0, 0);
+    const imageData = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    const data = new Uint8ClampedArray(bitmap.width * bitmap.height);
+    for (let p = 0; p < data.length; p += 1) {
+      data[p] = imageData.data[p * 4] ?? 0;
+    }
+    return { width: bitmap.width, height: bitmap.height, data };
+  } finally {
+    bitmap.close();
+  }
+}
+
 /** ImageDataLikeをPNG形式のBlobに変換する(ZIP書き出し・個別ダウンロードで使う)。 */
 export function imageDataLikeToPngBlob(image: ImageDataLike): Promise<Blob> {
   return new Promise((resolve, reject) => {

@@ -61,6 +61,7 @@ import {
   updateStampCrop,
 } from './editorState';
 import { createEraseEditor } from './eraseEditor';
+import { decodeEraseMask, encodeEraseMask, type EncodedEraseMask } from './eraseMaskCodec';
 import { createSheetAssignDialog } from './sheetAssignDialog';
 import {
   countUnassignedSheets,
@@ -78,6 +79,7 @@ import {
   createDefaultStampSetting,
   type CropAmount,
   type DetectionParams,
+  type EraseMask,
   type GlobalSettings,
   type PreviewSettings,
   type ProjectState,
@@ -243,13 +245,67 @@ function parseSheetMeta(value: unknown): Sheet | null {
   };
 }
 
+function parseEncodedEraseMask(value: unknown): EncodedEraseMask | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { x, y, width, height, png } = value;
+  if (
+    typeof x !== 'number' ||
+    typeof y !== 'number' ||
+    typeof width !== 'number' ||
+    typeof height !== 'number' ||
+    typeof png !== 'string'
+  ) {
+    return null;
+  }
+  return { x, y, width, height, png };
+}
+
+/**
+ * スタンプ1枚ぶんの`eraseMaskBySheet`(シートid→保存形式のマスク)を読み込む。マスクが
+ * 無い場合(キー自体が無い等)はエラーにせず空のRecordを返す。保存されていたマスクの形式が
+ * 不正、またはデコードしたPNGのサイズが保存メタ情報と一致しない場合は、そのシートぶんの
+ * マスクだけを破棄し(`discarded`をインクリメント)、他のシート・他のスタンプの読み込みは
+ * 継続する(追加修正指示書 第5弾 項目19-c)。
+ */
+async function parseEraseMaskBySheet(
+  value: unknown,
+): Promise<{ result: Record<string, EraseMask>; discarded: number }> {
+  if (!isRecord(value)) {
+    return { result: {}, discarded: 0 };
+  }
+  const result: Record<string, EraseMask> = {};
+  let discarded = 0;
+  for (const [sheetId, raw] of Object.entries(value)) {
+    const encoded = parseEncodedEraseMask(raw);
+    if (!encoded) {
+      discarded += 1;
+      continue;
+    }
+    try {
+      const mask = await decodeEraseMask(encoded);
+      if (mask) {
+        result[sheetId] = mask;
+      } else {
+        discarded += 1;
+      }
+    } catch {
+      discarded += 1;
+    }
+  }
+  return { result, discarded };
+}
+
 /**
  * 設定JSON(version 2)を読み込む。シートの画像データ本体は含まれないため、呼び出し側で
  * 「現在読み込み済みのシート(名前が一致するもの)」とだけ突き合わせて使う(B-6参照。
  * ファイル名・サイズでの自動対応づけ+手動割り当てUIは今回のスコープでは簡易化している。
- * 詳細はdocs/decisions.md参照)。
+ * 詳細はdocs/decisions.md参照)。消去マスクのPNGデコードが必要なため非同期にしている。
  */
-function parseProjectStateV2(value: unknown): ProjectState | null {
+async function parseProjectStateV2(
+  value: unknown,
+): Promise<{ project: ProjectState; discardedMaskCount: number } | null> {
   if (!isRecord(value) || !Array.isArray(value.sheets) || !Array.isArray(value.stamps)) {
     return null;
   }
@@ -258,28 +314,39 @@ function parseProjectStateV2(value: unknown): ProjectState | null {
     return null;
   }
   const stampsRaw = value.stamps;
-  const stamps: StampSetting[] = Array.from({ length: STAMP_COUNT }, (_, i) => {
+  let discardedMaskCount = 0;
+  const stamps: StampSetting[] = [];
+  for (let i = 0; i < STAMP_COUNT; i += 1) {
     const raw = stampsRaw[i];
     if (!isRecord(raw) || typeof raw.sourceSheetId !== 'string') {
-      return createDefaultStampSetting(sheets[0]?.id ?? '');
+      stamps.push(createDefaultStampSetting(sheets[0]?.id ?? ''));
+      continue;
     }
-    return {
+    const { result: eraseMaskBySheet, discarded } = await parseEraseMaskBySheet(
+      raw.eraseMaskBySheet,
+    );
+    discardedMaskCount += discarded;
+    stamps.push({
       sourceSheetId: raw.sourceSheetId,
       adjust: parseAdjustFields(raw.adjust),
       cropBySheet: parseCropBySheet(raw.cropBySheet),
-      // マスクのPNG保存/読込は追加修正指示書 第5弾 項目19-cで実装する。
-      eraseMaskBySheet: {},
-    };
-  });
+      eraseMaskBySheet,
+    });
+  }
 
   return {
-    version: 2,
-    sheets,
-    stamps,
-    globalSettings: parseGlobalSettings(value.globalSettings),
-    coverIndex:
-      typeof value.coverIndex === 'number' && value.coverIndex < STAMP_COUNT ? value.coverIndex : 0,
-    preview: parsePreview(value.preview),
+    project: {
+      version: 2,
+      sheets,
+      stamps,
+      globalSettings: parseGlobalSettings(value.globalSettings),
+      coverIndex:
+        typeof value.coverIndex === 'number' && value.coverIndex < STAMP_COUNT
+          ? value.coverIndex
+          : 0,
+      preview: parsePreview(value.preview),
+    },
+    discardedMaskCount,
   };
 }
 
@@ -331,14 +398,39 @@ function migrateProjectStateV1(value: Record<string, unknown>): ProjectState | n
   };
 }
 
-function parseProjectState(value: unknown): ProjectState | null {
+async function parseProjectState(
+  value: unknown,
+): Promise<{ project: ProjectState; discardedMaskCount: number } | null> {
   if (!isRecord(value)) {
     return null;
   }
   if (value.version === 2) {
     return parseProjectStateV2(value);
   }
-  return migrateProjectStateV1(value);
+  // v1(単一シート)の設定JSONには消去マスクが存在しないため、破棄件数は常に0。
+  const migrated = migrateProjectStateV1(value);
+  return migrated ? { project: migrated, discardedMaskCount: 0 } : null;
+}
+
+/**
+ * 設定JSONとして保存できる形に`ProjectState`を変換する。`eraseMaskBySheet`の値
+ * (`Uint8ClampedArray`を含む`EraseMask`)はそのまま`JSON.stringify`するとインデックスキーの
+ * 巨大なオブジェクトになってしまうため、`encodeEraseMask`でPNG Base64 + 座標メタ情報の形に
+ * 変換する(空〈未編集〉のマスクは保存しない。追加修正指示書 第5弾 項目19-c)。
+ */
+function buildSerializableProject(project: ProjectState): unknown {
+  return {
+    ...project,
+    stamps: project.stamps.map((setting) => ({
+      ...setting,
+      eraseMaskBySheet: Object.fromEntries(
+        Object.entries(setting.eraseMaskBySheet).flatMap(([sheetId, mask]) => {
+          const encoded = encodeEraseMask(mask);
+          return encoded ? [[sheetId, encoded] as const] : [];
+        }),
+      ),
+    })),
+  };
 }
 
 function loadStoredPreviewPreference(): PreviewSettings {
@@ -1193,7 +1285,7 @@ export function createPreviewView(
         }
         downloadTextFile(
           `wanwan-linestamp-split-settings_${formatTimestamp(new Date())}.json`,
-          JSON.stringify(project, null, 2),
+          JSON.stringify(buildSerializableProject(project), null, 2),
           'application/json',
         );
       },
@@ -1204,7 +1296,11 @@ export function createPreviewView(
    * 保存シート→現在のシートidの対応づけ(`idMap`、「割り当てない」はエントリなし)を使って、
    * 読み込んだProjectStateのidを現在のセッションのものへ付け替えて(`remapProjectIds`)反映する。
    */
-  function finalizeSettingsLoad(parsed: ProjectState, idMap: Map<string, string>): void {
+  function finalizeSettingsLoad(
+    parsed: ProjectState,
+    idMap: Map<string, string>,
+    discardedMaskCount: number,
+  ): void {
     project = remapProjectIds(parsed, idMap, store.sheets);
     adjustPanel.setGlobalSettings(project.globalSettings);
     backgroundPicker.setValue(project.preview);
@@ -1214,14 +1310,22 @@ export function createPreviewView(
     resetHistory();
 
     const unassignedCount = countUnassignedSheets(parsed, idMap);
+    const notes: string[] = [];
+    if (unassignedCount > 0) {
+      notes.push(`画像が割り当てられなかったシートが${unassignedCount}件`);
+    }
+    if (discardedMaskCount > 0) {
+      notes.push(`読み込めなかった消しゴムのマスクが${discardedMaskCount}件`);
+    }
     showToast(
-      unassignedCount > 0
-        ? `検出枠・設定を読み込みました(画像が割り当てられなかったシートが${unassignedCount}件あります)。`
+      notes.length > 0
+        ? `検出枠・設定を読み込みました(${notes.join('、')}あります)。`
         : '検出枠・設定を読み込みました。',
     );
   }
 
   let pendingParsedProject: ProjectState | null = null;
+  let pendingDiscardedMaskCount = 0;
   /** ダイアログに表示中の行に対応する、保存シートのid一覧(「画像を追加で読み込む」後の再提案に使う)。 */
   let pendingRowSavedIds: string[] = [];
 
@@ -1244,8 +1348,9 @@ export function createPreviewView(
           idMap.delete(savedId);
         }
       });
-      finalizeSettingsLoad(pendingParsedProject, idMap);
+      finalizeSettingsLoad(pendingParsedProject, idMap, pendingDiscardedMaskCount);
       pendingParsedProject = null;
+      pendingDiscardedMaskCount = 0;
       pendingRowSavedIds = [];
     },
     onAddMoreImages: (files) => {
@@ -1306,21 +1411,23 @@ export function createPreviewView(
           }
           try {
             const text = await file.text();
-            const parsed = parseProjectState(JSON.parse(text));
-            if (!parsed) {
+            const parseResult = await parseProjectState(JSON.parse(text));
+            if (!parseResult) {
               showToast(
                 '設定ファイルの形式が正しくありません(24枚ぶんの設定が必要です)。',
                 'error',
               );
               return;
             }
+            const { project: parsed, discardedMaskCount } = parseResult;
 
             const match = matchSheetsByNameAndSize(parsed.sheets, store.sheets);
             if (match.needsAssignment.length === 0) {
-              finalizeSettingsLoad(parsed, new Map(Object.entries(match.idMap)));
+              finalizeSettingsLoad(parsed, new Map(Object.entries(match.idMap)), discardedMaskCount);
               return;
             }
             pendingParsedProject = parsed;
+            pendingDiscardedMaskCount = discardedMaskCount;
             pendingRowSavedIds = match.needsAssignment.map((row) => row.savedSheet.id);
             sheetAssignDialog.open(match.needsAssignment, store.sheets);
           } catch {

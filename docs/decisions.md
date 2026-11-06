@@ -601,3 +601,43 @@ AIが生成した透過PNGに、被写体の周りの半透明の白〜クリー
 - マスクのJSON保存/読込(PNG Base64化)は項目19-cで別コミットとして追加する。現時点では
   「完了」で確定したマスクはメモリ上の`ProjectState`にのみ反映され、設定JSON書き出し/読込には
   まだ含まれない。
+
+## 2026-11-06: 消去マスクの設定JSON保存(PNG Base64、追加修正指示書 第5弾 項目19-c)
+
+`StampSetting.eraseMaskBySheet`の値(`EraseMask`、`Uint8ClampedArray`を含む)を、そのまま
+`JSON.stringify(project)`に渡すと、配列がインデックスキーのオブジェクトとして展開され、
+1スタンプぶんだけで数万〜数十万文字という非現実的なサイズになる(実測でも未対応のままだと
+保存ボタンが固まる)。これを避けるため、`split/eraseMaskCodec.ts`を新設し、保存直前に
+`eraseMaskBySheet`だけをPNG+Base64形式に変換してから`JSON.stringify`する方式にした。
+
+- **エンコード方式**: マスク(1チャンネル、0〜255)を、同じ値をR・G・Bに複製したグレースケール
+  PNGとして`canvas.toDataURL('image/png')`でdata URL化する(`shared/imageData.ts:
+  grayscaleToPngDataUrl`、Canvas依存はこの薄いラッパーに閉じ込める。CLAUDE.mdの方針どおり)。
+  アルファ専用PNG(R=0・A=値)ではなくグレースケールにしたのは、`toDataURL`がアルファ付き画像でも
+  常に不透明合成されるとは限らず、ブラウザ実装依存のリスクを避けたかったため。PNG自体が可逆圧縮
+  かつ「ほぼ0が並ぶ疎なマスク」に強いため、追加の圧縮処理は行わない(実測: 234×234pxのマスクで
+  約4.7KB、24枚すべて編集しても数十KB〜1MB程度に収まる想定で、指示書の目標〈数KB〜数十KB/枚、
+  合計数MB以内〉を満たす)。
+- **保存は同期、読込は非同期**: `toDataURL`は同期APIのため、保存ボタンのハンドラは従来どおり
+  同期のままでよい(`buildSerializableProject`)。一方、デコード(`createImageBitmap`)は非同期の
+  ため、`parseProjectStateV2`・`parseProjectState`を`Promise`を返す関数に変更し、唯一の呼び出し元
+  (`loadSettingsButton`のクリックハンドラ、すでに`async`)で`await`する形にした。`parseProjectState`
+  を呼ぶ箇所はこの1箇所のみだったため、影響範囲は小さく収まった。v1(単一シート)の移行関数
+  (`migrateProjectStateV1`)はマスクを持たないため同期のまま据え置き、戻り値だけ
+  `{project, discardedMaskCount: 0}`の形に揃えた。
+- **空マスクの省略**: `encodeEraseMask`は、全画素が0のマスクに対して`undefined`を返し、呼び出し側
+  (`buildSerializableProject`)でそのシートIDのキー自体を結果オブジェクトから除外する(指示書の
+  「すべて0のマスクは保存しない」要求どおり)。これは`isStampModified`の判定(マスクが非空なら
+  変更済み)と対称的な扱いになっている。
+- **壊れたマスクの扱い**: デコードしたPNGの`width`・`height`が、保存されていたメタ情報
+  (`x`・`y`・`width`・`height`、JSON側に平テキストで持つ)と一致しない場合、またはそもそも
+  `png`フィールドが文字列でない等の形式不正の場合は、そのシートぶんのマスクだけを破棄し
+  (`discarded`をカウント)、読み込み自体は続行する(1件の破損で設定ファイル全体が読み込めなく
+  なるのを避ける)。読込完了時のトースト文言に「読み込めなかった消しゴムのマスクがN件あります」を
+  追加し、既存の「画像が割り当てられなかったシートがN件」と同じ文で両方を案内できるようにした。
+- **座標メタ情報は平テキストのまま**: `x`・`y`・`width`・`height`はPNGに埋め込まず、JSON側に
+  そのまま数値で持つ(シート絶対座標)。PNGのメタデータチャンクに埋め込む方式も検討したが、
+  JSON側の方が読みやすく、壊れたPNGでも座標だけは読める・デバッグしやすいという利点を優先した。
+- 「全体に適用…」(`applyAdjustToAll`)はもともと`adjust`フィールドのみを対象にしており、
+  `eraseMaskBySheet`には触れないため、今回の変更は不要だった(指示書の「マスクは全体適用の対象外」
+  という要求はすでに満たされていた)。
