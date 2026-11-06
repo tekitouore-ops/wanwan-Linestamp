@@ -1112,3 +1112,73 @@ body {
   font-size: 0.78rem;
   color: #c9580a;
 }
+
+/* ---- タブ②: 手動消しゴム編集画面(追加修正指示書 第5弾 項目19) ---- */
+
+.erase-editor {
+  width: min(1100px, 96vw);
+  max-height: 92vh;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.erase-editor::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.erase-editor__header {
+  margin-bottom: 8px;
+}
+
+.erase-editor__title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.erase-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.erase-editor__canvases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 12px 0;
+}
+
+.erase-editor__canvas-col {
+  min-width: 0;
+}
+
+.erase-editor__canvas {
+  width: 460px;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  display: block;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: repeating-conic-gradient(#e9e6dd 0% 25%, #fff 0% 50%) 50% / 20px 20px;
+  touch-action: none;
+}
+
+.erase-editor__canvas--final {
+  width: 100%;
+  height: 460px;
+  object-fit: contain;
+  cursor: default;
+}
+
+.erase-editor__canvas--checker {
+  background: repeating-conic-gradient(#e9e6dd 0% 25%, #fff 0% 50%) 50% / 20px 20px;
+}
+
+.erase-editor__canvas--dark {
+  background: #1e1e1e;
+}

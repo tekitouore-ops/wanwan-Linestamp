@@ -49,6 +49,7 @@ import {
   getStampFrame,
   isStampAdjusted,
   resetStampAdjust,
+  setActiveEraseMask,
   setCoverIndex,
   setPreview,
   setSourceForAllStamps,
@@ -59,6 +60,7 @@ import {
   updateStampAdjust,
   updateStampCrop,
 } from './editorState';
+import { createEraseEditor } from './eraseEditor';
 import { createSheetAssignDialog } from './sheetAssignDialog';
 import {
   countUnassignedSheets,
@@ -461,6 +463,7 @@ export function createPreviewView(
       sourcePickerElement: sourcePicker.element,
       hasMultipleSheets: project.sheets.length > 1,
       backgroundMode: sourceSheet?.detectSettings.backgroundMode ?? 'color',
+      hasEraseMask: !!getActiveEraseMask(project, index),
     });
   }
 
@@ -720,6 +723,8 @@ export function createPreviewView(
     },
   });
 
+  const eraseEditor = createEraseEditor();
+
   const bulkSourceDialog = createBulkSourceDialog({
     onApply: (sheetId, mode) => {
       if (!project) return;
@@ -828,6 +833,34 @@ export function createPreviewView(
     onBulkSource: () => {
       if (!project) return;
       bulkSourceDialog.open(project.sheets);
+    },
+    onEraseStamp: (index) => {
+      if (!project) return;
+      const current = project;
+      const sheet = getSourceSheet(current, index);
+      const image = sheet ? getSheetImage(store, sheet.id) : undefined;
+      const frame = sheet?.frames[index];
+      if (!sheet || !image || !frame) {
+        showToast('採用元のシートが見つかりません。', 'error');
+        return;
+      }
+      eraseEditor.open({
+        index,
+        sourceImage: image,
+        frame,
+        adjust: getResolvedStampAdjust(current, index),
+        globalSettings: current.globalSettings,
+        backgroundColor: sheet.detectSettings.backgroundColor ?? FALLBACK_BACKGROUND_COLOR,
+        backgroundMode: sheet.detectSettings.backgroundMode,
+        existingMask: getActiveEraseMask(current, index),
+        initialBackground: current.preview,
+        onComplete: (mask) => {
+          if (!project) return;
+          project = setActiveEraseMask(project, index, mask);
+          refreshStampPanels(index);
+          commitHistory();
+        },
+      });
     },
   });
 

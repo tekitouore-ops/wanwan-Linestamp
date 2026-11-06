@@ -40,7 +40,9 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
 - **ステップB**(`split/previewView.ts` が全体レイアウトを担当):
   - 左: 調整パネル(`split/adjustPanel.ts`、選択中の1枚の個別設定+採用元選択〈`split/sourcePicker.ts`〉+
     折りたたみ式の全体設定)。「全シートで比較…」(`split/compareDialog.ts`)、「採用元をまとめて設定…」
-    (`split/bulkSourceDialog.ts`)もここから開く。
+    (`split/bulkSourceDialog.ts`)、「手動で消す…」(`split/eraseEditor.ts`、全画面の消しゴム編集
+    ダイアログ。ブラシ処理は`split/eraseBrush.ts`に純粋関数として分離。2026-11-06 追加修正指示書
+    第5弾 項目19-b)もここから開く。
   - 右: カードグリッド(`split/stampCard.ts` を24個並べる。シートが2枚以上なら採用元バッジ表示)+
     上部バー(`split/backgroundPicker.ts` の確認用背景切替、選択中の1枚を実寸〜2倍で表示する
     拡大プレビュー〈`updateLargePreview`、2026-11-05 追加修正指示書 第3弾 項目16〉、ZIP書き出しボタン)
@@ -145,7 +147,12 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
    比例的に減衰させ、ブラシの縁をなめらかにする)。マスクをシート絶対座標で保存することで、
    切り抜き(crop)量を変えても位置がずれにくい。枠(`frame`)が5px超変化した場合は、
    `confirmSheets`が`cropBySheet`と同様に`eraseMaskBySheet`も破棄する(5px以内なら保持)。
-   編集画面(全画面ダイアログ)は未実装(項目19-b/19-cで追加予定)。
+   編集画面(全画面ダイアログ、`split/eraseEditor.ts`)は、「背景透過の直後・ゴミ除去の前」の画像を
+   そのまま編集対象にする(`cropWithForcedBackground`・`removeBackground`/`keepOriginalAlpha`を
+   本番と同じ計算で呼ぶ)。作業用画像の原点(シート絶対座標)がそのままマスクの原点になるため、
+   編集中は座標変換なしでローカルのマスク配列を直接書き換えられる。ブラシのスタンプ適用・補間は
+   `split/eraseBrush.ts`に純粋関数として切り出す(ユニットテスト対象)。設定JSONへの保存/読込は
+   項目19-cで追加予定(2026-11-06、追加修正指示書 第5弾 項目19-b)。
 4. **ゴミ除去(ghost.ts)**: 消しゴムの直後に適用する(2026-11-05、追加修正指示書 第3弾 項目15、
    第5弾 項目18で色を問わない判定に拡張)。`StampAdjust.ghostRemoval`(0〜60%)をアルファ(0〜255)
    のしきい値(`alphaMax`)に変換し、アルファがそれ以下の画素を、色を問わず除去候補にする。

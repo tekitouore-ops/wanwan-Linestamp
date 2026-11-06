@@ -21,6 +21,8 @@ export interface AdjustPanelCallbacks {
   onGlobalSettingsChange: (patch: Partial<GlobalSettings>) => void;
   onCompareSources: (index: number) => void;
   onBulkSource: () => void;
+  /** 「手動で消す…」ボタン(追加修正指示書 第5弾 項目19)。消しゴム編集画面を開く。 */
+  onEraseStamp: (index: number) => void;
   /**
    * スライダー・数値入力・チェックボックス等での操作が1手ぶん確定したときに呼ばれる
    * (Undo履歴へのコミット用。修正指示書 項目4参照)。スライダーはドラッグ中は呼ばれず、
@@ -41,6 +43,8 @@ export interface ShowForStampParams {
   hasMultipleSheets: boolean;
   /** 採用元シートの背景の扱い(背景色モードで縁フチ=0のときのヒント表示に使う。修正指示書 項目8参照)。 */
   backgroundMode: BackgroundMode;
+  /** 消しゴムで何か消してあるか(ボタンの表示切替に使う。追加修正指示書 第5弾 項目19)。 */
+  hasEraseMask: boolean;
 }
 
 export interface AdjustPanelHandle {
@@ -446,7 +450,28 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       className: 'button',
       attrs: { type: 'button' },
       text: 'この1枚をリセット',
-      on: { click: () => callbacks.onResetStamp(index) },
+      on: {
+        click: () => {
+          if (
+            !window.confirm(
+              'この1枚の個別設定(補正・切り抜き・配置)をリセットします。消しゴムの編集も消えます。よろしいですか?',
+            )
+          ) {
+            return;
+          }
+          callbacks.onResetStamp(index);
+        },
+      },
+    });
+    const eraseButton = h('button', {
+      className: 'button',
+      attrs: { type: 'button' },
+      text: params.hasEraseMask ? '手動で消す…(編集あり)' : '手動で消す…',
+      on: { click: () => callbacks.onEraseStamp(index) },
+    });
+    const eraseHint = h('p', {
+      className: 'field__hint',
+      text: 'キャラの一部や、ゴミ除去で消しきれない範囲を直接消したいときに使います(消しゴム自体は色を問わず、背景透過の直後・ゴミ除去の前に適用されます)。',
     });
     const applyAllButton = h('button', {
       className: 'button',
@@ -477,6 +502,9 @@ export function createAdjustPanel(callbacks: AdjustPanelCallbacks): AdjustPanelH
       outlineSlider.element,
       outlineHint,
       outlineBackgroundModeHint,
+      h('h4', { className: 'split-section-heading', text: '消しゴム' }),
+      h('div', { className: 'toolbar' }, [eraseButton]),
+      eraseHint,
       ghostRemovalSlider.element,
       ghostRemovalStampHint,
       ghostProtectEdgePxSlider.element,
