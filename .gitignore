@@ -5,6 +5,10 @@ dist/
 .DS_Store
 coverage/
 
+# scripts/verify-zip.mjs が参照する、src/shared/lineSpec.tsから生成するJSON(実行のたびに再生成する)
+scripts/lineSpec.generated.json
+scripts/.lineSpec.generated.mjs
+
 # サンプル画像(ユーザーが手元に配置する実データ。リポジトリには含めない)
 samples/*
 !samples/README.md

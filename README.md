@@ -108,7 +108,20 @@ npm test            # Vitestでユニットテストを実行
 npm run typecheck   # TypeScriptの型チェック
 npm run lint        # ESLint
 npm run format      # Prettierでフォーマット
+npm run verify:zip -- path/to/stamps_YYYYMMDD_HHMM.zip  # 書き出しZIPの自動検証(下記参照)
 ```
+
+### 書き出しZIPの自動検証
+
+タブ②で書き出したZIPファイルが、LINEスタンプの規格(サイズ・容量・透過・余白など)に合っているかを、
+ツール本体とは独立したNode製のスクリプトで検査できます。
+
+```bash
+npm run verify:zip -- path/to/stamps_20261107_1200.zip
+```
+
+`--json`を付けると、機械可読のJSON形式で結果を出力します。NGが1件でもあれば終了コードが1になります
+(CI等での自動チェックにも使えます)。詳細な検査項目は`docs/spec.md`を参照してください。
 
 ## ビルドと公開(GitHub Pages)
 
@@ -123,8 +136,9 @@ npm run format      # Prettierでフォーマット
 
 ```
 wanwan-Linestamp/
-├── docs/            # 仕様書・設計ドキュメント(spec / line-spec / prompt-template / architecture / decisions / backlog)
+├── docs/            # 仕様書・設計ドキュメント(spec / line-spec / prompt-template / architecture / decisions / backlog / release-checklist)
 ├── public/          # 静的ファイル(favicon等)
+├── scripts/         # ツール本体から独立したNode製スクリプト(verify-zip.mjs等)
 ├── samples/         # 動作確認用の実画像サンプル置き場(リポジトリには実ファイルを含めない)
 ├── src/
 │   ├── main.ts      # エントリポイント
