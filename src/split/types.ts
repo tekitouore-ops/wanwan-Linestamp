@@ -73,10 +73,15 @@ export interface StampAdjust {
   /** 縁フチの太さ(0〜16px)。 */
   outline: number;
   /**
-   * ゴミ除去(半透明の白)の強さ(0〜50%、0=OFF)。背景透過の直後に適用する、アルファの
-   * しきい値(%)として扱う(追加修正指示書 第3弾 項目15)。
+   * ゴミ除去(半透明のもや)の強さ(0〜60%、0=OFF)。背景透過の直後に適用する、アルファの
+   * しきい値(%)として扱う。色は問わない(追加修正指示書 第3弾 項目15、第5弾 項目18で拡張)。
    */
   ghostRemoval: number;
+  /**
+   * ゴミ除去で、確かな前景(キャラ・文字・白フチ)から保護する範囲(0〜4px)。
+   * 文字や白フチが削れる場合に上げる(追加修正指示書 第5弾 項目18)。
+   */
+  ghostProtectEdgePx: number;
   /** 検出枠からの切り抜き量(元画像px、採用元シートの枠に対する値)。 */
   crop: CropAmount;
   /** 拡大率(%)。100 = 安全領域にフィットする倍率。 */
@@ -91,6 +96,7 @@ export const DEFAULT_STAMP_ADJUST: StampAdjust = {
   edgeFix: 0,
   outline: 0,
   ghostRemoval: 0,
+  ghostProtectEdgePx: 1,
   crop: DEFAULT_CROP,
   scale: 100,
   offsetX: 0,
@@ -109,10 +115,12 @@ export interface GlobalSettings {
   /** 縁フチの既定値(px)。個別設定で上書きしていないスタンプに使う。 */
   defaultOutline: number;
   /**
-   * ゴミ除去(半透明の白)の既定値(0〜50%、0=OFF)。個別設定で上書きしていないスタンプに使う
-   * (追加修正指示書 第3弾 項目15)。
+   * ゴミ除去(半透明のもや)の既定値(0〜60%、0=OFF)。個別設定で上書きしていないスタンプに使う
+   * (追加修正指示書 第3弾 項目15、第5弾 項目18で拡張)。
    */
   defaultGhostRemoval: number;
+  /** ゴミ除去の保護範囲(0〜4px)の既定値。個別設定で上書きしていないスタンプに使う(第5弾 項目18)。 */
+  defaultGhostProtectEdgePx: number;
   /** 透過しきい値(1〜80、書き出し時の背景除去〈`export/alpha.ts`〉で使う)。 */
   alphaThreshold: number;
   /** エッジのぼかし幅(0〜3px)。 */
@@ -128,6 +136,7 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
   // 既定は0(AIに白フチを描かせない前提のため)。実運用では4〜6pxが使われる想定(docs/decisions.md参照)。
   defaultOutline: 0,
   defaultGhostRemoval: 0,
+  defaultGhostProtectEdgePx: 1,
   alphaThreshold: 24,
   featherPx: 1,
   align: 'center',
@@ -162,17 +171,33 @@ export interface Sheet {
 }
 
 /**
+ * 手動消しゴムの消去マスク(追加修正指示書 第5弾 項目19)。シート画像上の絶対座標(`x`・`y`)に
+ * 位置する`width`×`height`の1チャンネルデータ。各値は0(そのまま)〜255(完全に消去)で、
+ * 中間値はアルファの減衰率として使う(ブラシの縁をなめらかにするため)。座標系をシート画像の
+ * 絶対座標で持つことで、切り抜き(crop)量を変えても位置がずれにくい。
+ */
+export interface EraseMask {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
+/**
  * スタンプ番号ごとの個別設定。`sourceSheetId` でどのシートの同じ番号の枠を採用するかを指し、
  * `adjust`(crop以外)は採用元を切り替えても引き継ぎ、`cropBySheet` は採用元シートごとに別々に持つ。
+ * `eraseMaskBySheet`(手動消しゴムのマスク)も、`cropBySheet`と同様に採用元シートごとに別々に持つ。
  */
 export interface StampSetting {
   sourceSheetId: string;
   adjust: Partial<StampAdjustFields>;
   cropBySheet: Record<string, CropAmount>;
+  eraseMaskBySheet: Record<string, EraseMask>;
 }
 
 export function createDefaultStampSetting(sourceSheetId: string): StampSetting {
-  return { sourceSheetId, adjust: {}, cropBySheet: {} };
+  return { sourceSheetId, adjust: {}, cropBySheet: {}, eraseMaskBySheet: {} };
 }
 
 /** タブ②ステップBの作業状態。設定JSONとして保存/読込できる(画像本体は含めない)。 */
@@ -200,6 +225,8 @@ export function resolveStampAdjust(
     edgeFix: setting?.adjust.edgeFix ?? DEFAULT_STAMP_ADJUST.edgeFix,
     outline: setting?.adjust.outline ?? globalSettings.defaultOutline,
     ghostRemoval: setting?.adjust.ghostRemoval ?? globalSettings.defaultGhostRemoval,
+    ghostProtectEdgePx:
+      setting?.adjust.ghostProtectEdgePx ?? globalSettings.defaultGhostProtectEdgePx,
     crop,
     scale: setting?.adjust.scale ?? DEFAULT_STAMP_ADJUST.scale,
     offsetX: setting?.adjust.offsetX ?? DEFAULT_STAMP_ADJUST.offsetX,
@@ -226,6 +253,7 @@ export function isStampModified(
     edgeFix: DEFAULT_STAMP_ADJUST.edgeFix,
     outline: globalSettings.defaultOutline,
     ghostRemoval: globalSettings.defaultGhostRemoval,
+    ghostProtectEdgePx: globalSettings.defaultGhostProtectEdgePx,
     scale: DEFAULT_STAMP_ADJUST.scale,
     offsetX: DEFAULT_STAMP_ADJUST.offsetX,
     offsetY: DEFAULT_STAMP_ADJUST.offsetY,
@@ -242,6 +270,11 @@ export function isStampModified(
     activeCrop.bottom !== 0 ||
     activeCrop.left !== 0
   ) {
+    return true;
+  }
+
+  const activeMask = setting.eraseMaskBySheet[setting.sourceSheetId];
+  if (activeMask && activeMask.data.some((v) => v > 0)) {
     return true;
   }
 

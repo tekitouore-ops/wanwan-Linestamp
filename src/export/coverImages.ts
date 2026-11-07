@@ -1,6 +1,6 @@
 import { MAIN_IMAGE_SIZE, TAB_IMAGE_SIZE } from '../shared/lineSpec';
 import type { ImageDataLike, RGB } from '../shared/types';
-import type { BackgroundMode, GlobalSettings, Rect, StampAdjust } from '../split/types';
+import type { BackgroundMode, EraseMask, GlobalSettings, Rect, StampAdjust } from '../split/types';
 import { renderStamp } from './renderStamp';
 
 /**
@@ -34,9 +34,18 @@ export function renderMainImage(
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
   backgroundMode: BackgroundMode = 'color',
+  eraseMask?: EraseMask | null,
 ): ImageDataLike {
   const settings = settingsForSize(globalSettings, MAIN_IMAGE_SIZE.width, MAIN_IMAGE_SIZE.height);
-  return renderStamp(sourceImage, frame, backgroundColor, settings, adjust, backgroundMode);
+  return renderStamp(
+    sourceImage,
+    frame,
+    backgroundColor,
+    settings,
+    adjust,
+    backgroundMode,
+    eraseMask,
+  );
 }
 
 /** 表紙スタンプの調整結果を引き継ぎ、タブ画像(96×74)を生成する。 */
@@ -47,9 +56,18 @@ export function renderTabImage(
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
   backgroundMode: BackgroundMode = 'color',
+  eraseMask?: EraseMask | null,
 ): ImageDataLike {
   const settings = settingsForSize(globalSettings, TAB_IMAGE_SIZE.width, TAB_IMAGE_SIZE.height);
-  return renderStamp(sourceImage, frame, backgroundColor, settings, adjust, backgroundMode);
+  return renderStamp(
+    sourceImage,
+    frame,
+    backgroundColor,
+    settings,
+    adjust,
+    backgroundMode,
+    eraseMask,
+  );
 }
 
 export interface CoverImages {
@@ -65,6 +83,7 @@ export function renderCoverImages(
   globalSettings: GlobalSettings,
   adjust: StampAdjust,
   backgroundMode: BackgroundMode = 'color',
+  eraseMask?: EraseMask | null,
 ): CoverImages {
   return {
     main: renderMainImage(
@@ -74,6 +93,7 @@ export function renderCoverImages(
       globalSettings,
       adjust,
       backgroundMode,
+      eraseMask,
     ),
     tab: renderTabImage(
       sourceImage,
@@ -82,6 +102,7 @@ export function renderCoverImages(
       globalSettings,
       adjust,
       backgroundMode,
+      eraseMask,
     ),
   };
 }

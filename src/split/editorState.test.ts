@@ -21,6 +21,7 @@ import {
   setSourceForAllStamps,
   setSourceForParity,
   setSourceForWarningStamps,
+  setActiveEraseMask,
   setStampSource,
   swapCells,
   updateCellBox,
@@ -32,10 +33,15 @@ import {
   DEFAULT_DETECTION_PARAMS,
   DEFAULT_GLOBAL_SETTINGS,
   type DetectionResult,
+  type EraseMask,
   type ProjectState,
   type Rect,
   type Sheet,
 } from './types';
+
+function makeEraseMask(x: number, y: number, width: number, height: number, fill = 128): EraseMask {
+  return { x, y, width, height, data: new Uint8ClampedArray(width * height).fill(fill) };
+}
 
 function makeDetectionResult(): DetectionResult {
   return {
@@ -208,9 +214,9 @@ describe('confirmSheets', () => {
     expect(state.version).toBe(2);
     expect(state.sheets).toEqual([sheet]);
     expect(state.stamps).toEqual([
-      { sourceSheetId: 's1', adjust: {}, cropBySheet: {} },
-      { sourceSheetId: 's1', adjust: {}, cropBySheet: {} },
-      { sourceSheetId: 's1', adjust: {}, cropBySheet: {} },
+      { sourceSheetId: 's1', adjust: {}, cropBySheet: {}, eraseMaskBySheet: {} },
+      { sourceSheetId: 's1', adjust: {}, cropBySheet: {}, eraseMaskBySheet: {} },
+      { sourceSheetId: 's1', adjust: {}, cropBySheet: {}, eraseMaskBySheet: {} },
     ]);
     expect(state.coverIndex).toBe(0);
     expect(state.globalSettings).toEqual(DEFAULT_GLOBAL_SETTINGS);
@@ -281,6 +287,32 @@ describe('confirmSheets', () => {
     expect(second.stamps[0]?.cropBySheet).toEqual({});
   });
 
+  it('枠の変化が5px以内なら消しゴムマスクも保持する(追加修正指示書 第5弾 項目19)', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(1));
+    const first = confirmSheets(null, [sheet]);
+    const mask = makeEraseMask(0, 0, 10, 10);
+    const withMask = setActiveEraseMask(first, 0, mask);
+
+    const frames = [{ x: 4, y: 4, width: 10, height: 10 }]; // 右端・下端も+4px
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withMask, [changedSheet]);
+
+    expect(second.stamps[0]?.eraseMaskBySheet.s1).toBe(mask);
+  });
+
+  it('枠の変化が5pxを超えると消しゴムマスクを破棄する', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(1));
+    const first = confirmSheets(null, [sheet]);
+    const mask = makeEraseMask(0, 0, 10, 10);
+    const withMask = setActiveEraseMask(first, 0, mask);
+
+    const frames = [{ x: 6, y: 0, width: 4, height: 10 }]; // xが6px変化
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const second = confirmSheets(withMask, [changedSheet]);
+
+    expect(second.stamps[0]?.eraseMaskBySheet).toEqual({});
+  });
+
   it('複数シートがある場合、cropの保持/リセットはシートごとに別々に判定される', () => {
     const sheetA = makeSheet('a', 'a.png', makeFrames(2));
     const sheetB = makeSheet('b', 'b.png', makeFrames(2));
@@ -337,6 +369,7 @@ describe('ProjectStateの個別設定・全体設定・表紙・プレビュー'
       edgeFix: 0,
       outline: state.globalSettings.defaultOutline,
       ghostRemoval: state.globalSettings.defaultGhostRemoval,
+      ghostProtectEdgePx: state.globalSettings.defaultGhostProtectEdgePx,
       crop: { top: 0, right: 0, bottom: 0, left: 0 },
       scale: 100,
       offsetX: 0,
@@ -420,6 +453,18 @@ describe('ProjectStateの個別設定・全体設定・表紙・プレビュー'
       state = updateStampCrop(state, 0, { top: 0, right: 0, bottom: 0, left: 0 });
       expect(isStampAdjusted(state, 0)).toBe(false);
     });
+
+    it('消しゴムで消すと変更済みになる(追加修正指示書 第5弾 項目19)', () => {
+      const mask = makeEraseMask(0, 0, 4, 4, 128);
+      const state = setActiveEraseMask(makeProjectState(), 0, mask);
+      expect(isStampAdjusted(state, 0)).toBe(true);
+    });
+
+    it('消しゴムのマスクがすべて0(実質空)なら変更済みにならない', () => {
+      const mask = makeEraseMask(0, 0, 4, 4, 0);
+      const state = setActiveEraseMask(makeProjectState(), 0, mask);
+      expect(isStampAdjusted(state, 0)).toBe(false);
+    });
   });
 
   it('resetStampAdjustは個別設定を解除し、先頭シート採用に戻す', () => {
@@ -429,7 +474,12 @@ describe('ProjectStateの個別設定・全体設定・表紙・プレビュー'
     state = updateStampAdjust(state, 1, { scale: 120 });
     state = setStampSource(state, 1, 'b');
     const reset = resetStampAdjust(state, 1);
-    expect(reset.stamps[1]).toEqual({ sourceSheetId: 'a', adjust: {}, cropBySheet: {} });
+    expect(reset.stamps[1]).toEqual({
+      sourceSheetId: 'a',
+      adjust: {},
+      cropBySheet: {},
+      eraseMaskBySheet: {},
+    });
   });
 
   it('applyAdjustToAllは指定した項目だけ他スタンプのadjustへコピーする(採用元・cropは対象外)', () => {

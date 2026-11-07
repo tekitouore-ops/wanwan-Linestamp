@@ -8,6 +8,7 @@ import {
   type CropAmount,
   type DetectedCell,
   type DetectionResult,
+  type EraseMask,
   type GlobalSettings,
   type PreviewSettings,
   type ProjectState,
@@ -236,11 +237,16 @@ export function confirmSheets(previous: ProjectState | null, sheets: Sheet[]): P
     );
 
     const cropBySheet = { ...previousSetting.cropBySheet };
+    // 消しゴムのマスクも、cropと同じ許容(5px)で枠の変化を判定し、変わっていれば破棄する
+    // (マスクの座標系はシート絶対座標のため、許容内の微調整なら座標が多少ずれても実用上問題ない。
+    // 追加修正指示書 第5弾 項目19)。
+    const eraseMaskBySheet = { ...previousSetting.eraseMaskBySheet };
     if (frameChanged) {
       delete cropBySheet[sourceSheetId];
+      delete eraseMaskBySheet[sourceSheetId];
     }
 
-    return { sourceSheetId, adjust: previousSetting.adjust, cropBySheet };
+    return { sourceSheetId, adjust: previousSetting.adjust, cropBySheet, eraseMaskBySheet };
   });
 
   return {
@@ -268,6 +274,12 @@ export function getStampFrame(project: ProjectState, index: number): Rect | unde
 
 export function getStampFrameWarnings(project: ProjectState, index: number): CellWarning[] {
   return getSourceSheet(project, index)?.frameWarnings[index] ?? [];
+}
+
+/** 選択中スタンプの、現在の採用元シートに対する消しゴムマスクを得る(追加修正指示書 第5弾 項目19)。 */
+export function getActiveEraseMask(project: ProjectState, index: number): EraseMask | undefined {
+  const setting = project.stamps[index];
+  return setting ? setting.eraseMaskBySheet[setting.sourceSheetId] : undefined;
 }
 
 /** 選択中スタンプの、全体設定とマージ済みの実際の調整値(採用元シートのcrop込み)を得る。 */
@@ -306,6 +318,32 @@ export function updateStampCrop(
         ? { ...setting, cropBySheet: { ...setting.cropBySheet, [setting.sourceSheetId]: crop } }
         : setting,
     ),
+  };
+}
+
+/**
+ * 選択中スタンプの、現在の採用元シートに対する消しゴムマスクを更新する(追加修正指示書 第5弾
+ * 項目19)。`mask`に`null`を渡すと、そのシートぶんのマスクを削除する(空マスクを保存しない)。
+ */
+export function setActiveEraseMask(
+  project: ProjectState,
+  index: number,
+  mask: EraseMask | null,
+): ProjectState {
+  return {
+    ...project,
+    stamps: project.stamps.map((setting, i) => {
+      if (i !== index) {
+        return setting;
+      }
+      const eraseMaskBySheet = { ...setting.eraseMaskBySheet };
+      if (mask) {
+        eraseMaskBySheet[setting.sourceSheetId] = mask;
+      } else {
+        delete eraseMaskBySheet[setting.sourceSheetId];
+      }
+      return { ...setting, eraseMaskBySheet };
+    }),
   };
 }
 
