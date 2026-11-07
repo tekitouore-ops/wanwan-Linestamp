@@ -15,6 +15,7 @@ import {
   resetAllCells,
   resetCell,
   resetStampAdjust,
+  resolveStepAReturnTarget,
   selectCell,
   setCoverIndex,
   setPreview,
@@ -354,6 +355,46 @@ describe('confirmSheets', () => {
     const sheetB = makeSheet('b', 'b.png', makeFrames(2));
     const second = confirmSheets(first, [sheetA, sheetB]);
     expect(second.stamps.every((s) => s.sourceSheetId === 'a')).toBe(true);
+  });
+
+  it('戻る→一部の枠だけ変更→確定の往復で、変更していない番号の調整値は保持され、変更した番号もadjustは保持しつつcropだけリセットされる(追加修正指示書 第6弾 項目23)', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(3));
+    let state = confirmSheets(null, [sheet]);
+    state = updateStampAdjust(state, 0, { scale: 150 });
+    state = updateStampCrop(state, 0, { top: 5, right: 0, bottom: 0, left: 0 });
+    state = updateStampAdjust(state, 1, { outline: 4 });
+    state = updateStampCrop(state, 1, { top: 2, right: 0, bottom: 0, left: 0 });
+
+    // 番号0の枠だけ大きく動かす(1と2は不変のまま「戻る→確定」する想定)。
+    const frames = makeFrames(3);
+    frames[0] = { x: 999, y: 999, width: 10, height: 10 };
+    const changedSheet = makeSheet('s1', 'sheet.png', frames);
+    const confirmed = confirmSheets(state, [changedSheet]);
+
+    // 変更した番号0: adjustは保持、cropはリセット。
+    expect(confirmed.stamps[0]?.adjust).toEqual({ scale: 150 });
+    expect(confirmed.stamps[0]?.cropBySheet).toEqual({});
+    // 変更していない番号1: adjust・cropともに保持。
+    expect(confirmed.stamps[1]?.adjust).toEqual({ outline: 4 });
+    expect(confirmed.stamps[1]?.cropBySheet).toEqual({ s1: { top: 2, right: 0, bottom: 0, left: 0 } });
+  });
+});
+
+describe('resolveStepAReturnTarget(追加修正指示書 第6弾 項目23)', () => {
+  it('選択中スタンプの採用元シートid・番号を返す', () => {
+    const sheetA = makeSheet('a', 'a.png', makeFrames(2));
+    const sheetB = makeSheet('b', 'b.png', makeFrames(2));
+    let state = confirmSheets(null, [sheetA, sheetB]);
+    state = setStampSource(state, 1, 'b');
+
+    expect(resolveStepAReturnTarget(state, 1)).toEqual({ sheetId: 'b', cellIndex: 1 });
+    expect(resolveStepAReturnTarget(state, 0)).toEqual({ sheetId: 'a', cellIndex: 0 });
+  });
+
+  it('スタンプ番号が範囲外で採用元が見つからない場合はnullを返す', () => {
+    const sheet = makeSheet('s1', 'sheet.png', makeFrames(2));
+    const state = confirmSheets(null, [sheet]);
+    expect(resolveStepAReturnTarget(state, 99)).toBeNull();
   });
 });
 

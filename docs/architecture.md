@@ -49,9 +49,12 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   - 右: カードグリッド(`split/stampCard.ts` を24個並べる。シートが2枚以上なら採用元バッジ表示)+
     上部バー(`split/backgroundPicker.ts` の確認用背景切替、選択中の1枚を実寸〜2倍で表示する
     拡大プレビュー〈`updateLargePreview`、2026-11-05 追加修正指示書 第3弾 項目16〉、ZIP書き出しボタン)
-  - ステップBから「枠を修正」でステップAへ戻れる。戻っても、採用元シートの枠を変えていないスタンプの
-    個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す(画像データの
-    再読み込みを避けるため)。
+  - ステップBから「← 枠の調整に戻る」でステップAへ戻れる。戻っても、採用元シートの枠を変えていない
+    スタンプの個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す
+    (画像データの再読み込みを避けるため)。戻るときは、選択中だったスタンプ番号を
+    `createPreviewView`のコールバックに渡し、`editorState.ts: resolveStepAReturnTarget`で採用元
+    シートid・枠番号を求めて、ステップAでその枠を自動選択・カメラフィット(`split/cameraFit.ts`)する
+    (2026-11-07、追加修正指示書 第6弾 項目23)。
   - このステップの操作(採用元切替・個別設定・表紙設定・全体設定・一括操作等)は、ステップAとは別の
     `History<ProjectState>`(`split/history.ts`)でUndo/Redoできる。スライダーはドラッグ終了時に1手、
     ボタンは押下ごとに1手コミットする(`ui/slider.ts`の`onCommit`で、ドラッグ中〈`onChange`〉と

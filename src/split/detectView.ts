@@ -21,6 +21,7 @@ import {
   type ResizeHandle,
   type ResizeModifiers,
 } from './boxResize';
+import { computeCameraToFitBox } from './cameraFit';
 import {
   applyEditorStateToSheet,
   createEditorStateFromFrames,
@@ -169,10 +170,16 @@ function defaultDetectSettings(): DetectionParams {
 export interface DetectViewHandle {
   element: HTMLElement;
   /**
-   * ステップBから「枠を修正」で戻ってきたときに、既存のシート一式をそのまま再表示する。
-   * 新規にファイルを読み込む場合はドロップゾーンの操作で `onConfirm` まで進む。
+   * ステップBから「← 枠の調整に戻る」で戻ってきたときに、既存のシート一式をそのまま再表示する。
+   * `selectCellIndex`を指定すると、その番号の枠を自動選択し、見えるようにズーム・パンを調整する
+   * (追加修正指示書 第6弾 項目23)。新規にファイルを読み込む場合はドロップゾーンの操作で
+   * `onConfirm` まで進む。
    */
-  openWithExisting: (store: SheetStore, activeSheetId?: string | null) => void;
+  openWithExisting: (
+    store: SheetStore,
+    activeSheetId?: string | null,
+    selectCellIndex?: number | null,
+  ) => void;
 }
 
 /**
@@ -453,6 +460,10 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
         onConfirm(store);
       },
     },
+  });
+  const confirmHint = h('p', {
+    className: 'field__hint',
+    text: '枠を変えていないスタンプの調整内容(補正・配置・消しゴムなど)は保持されます。大きく変えた枠は、切り抜きと消しゴムがリセットされます。',
   });
 
   const zoomOutButton = h('button', {
@@ -1291,11 +1302,38 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
       createSectionHeading('警告'),
       warningList,
       h('div', { className: 'toolbar' }, [confirmButton]),
+      confirmHint,
     ]),
   ]);
   workspace.hidden = true;
 
-  function openWithExisting(incoming: SheetStore, preferredActiveId: string | null = null): void {
+  /**
+   * 指定番号の枠を選択し、その枠が余裕を持って見えるようにズーム・パンを調整する
+   * (追加修正指示書 第6弾 項目23。ステップBから「← 枠の調整に戻る」で戻ったときに使う)。
+   */
+  function selectAndFocusCell(index: number): void {
+    const image = getActiveImage();
+    const editor = editorStore.getState();
+    if (!image || !editor) {
+      return;
+    }
+    const cell = getCell(editor, index);
+    if (!cell) {
+      return;
+    }
+    editorStore.setState((s) => (s ? selectCell(s, index) : s));
+    const fitted = computeCameraToFitBox(cell.box, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, baseScale);
+    camera.zoom = fitted.zoom;
+    camera.panX = fitted.panX;
+    camera.panY = fitted.panY;
+    render();
+  }
+
+  function openWithExisting(
+    incoming: SheetStore,
+    preferredActiveId: string | null = null,
+    selectCellIndex: number | null = null,
+  ): void {
     store = incoming;
     incoming.sheets.forEach((sheet) => {
       if (!uiStateBySheet.has(sheet.id)) {
@@ -1306,6 +1344,9 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     const target = (preferredActiveId && getSheet(store, preferredActiveId)) ?? store.sheets[0];
     if (target) {
       switchToSheet(target.id);
+      if (selectCellIndex !== null) {
+        selectAndFocusCell(selectCellIndex);
+      }
     } else {
       activeSheetId = null;
       workspace.hidden = true;
