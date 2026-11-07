@@ -140,6 +140,29 @@ export async function pngDataUrlToGrayscale(
   }
 }
 
+/**
+ * 任意の画像形式(JPEG/WebP等)のBlobを、同じ解像度のPNG形式のBlobに変換する(縮小しない)。
+ * 参照画像のクリップボードコピー・保存用途(`prompt/clipboardImage.ts`)で使う。
+ */
+export async function blobToPngBlob(blob: Blob): Promise<Blob> {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const ctx = createContext2D(bitmap.width, bitmap.height);
+    ctx.drawImage(bitmap, 0, 0);
+    return await new Promise<Blob>((resolve, reject) => {
+      ctx.canvas.toBlob((result) => {
+        if (result) {
+          resolve(result);
+        } else {
+          reject(new Error('PNGへの変換に失敗しました。'));
+        }
+      }, 'image/png');
+    });
+  } finally {
+    bitmap.close();
+  }
+}
+
 /** ImageDataLikeをPNG形式のBlobに変換する(ZIP書き出し・個別ダウンロードで使う)。 */
 export function imageDataLikeToPngBlob(image: ImageDataLike): Promise<Blob> {
   return new Promise((resolve, reject) => {

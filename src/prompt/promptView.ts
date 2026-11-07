@@ -1,10 +1,11 @@
 import { h } from '../shared/dom';
-import { downloadTextFile, openFilePicker } from '../shared/file';
+import { downloadBlob, downloadTextFile, openFilePicker } from '../shared/file';
 import { STAMP_COUNT } from '../shared/lineSpec';
 import { createDropzone } from '../ui/dropzone';
 import { showToast } from '../ui/toast';
 import { buildCsvTemplate, parseRows } from './csv';
 import { buildPrompt } from './buildPrompt';
+import { copyImageToClipboard, isClipboardImageSupported, toPngBlob } from './clipboardImage';
 import { CONTENT_HEADING } from './fixedText';
 import { deserializeProject, serializeProject } from './projectFile';
 import {
@@ -111,8 +112,99 @@ function createField(labelText: string, control: HTMLElement, hint?: string): HT
   return h('div', { className: 'field' }, children);
 }
 
+const CLIPBOARD_COPY_FAILURE_MESSAGE =
+  '画像のコピーに失敗しました。「画像を保存」から保存して、ChatGPTに手動で添付してください。';
+
+/** 参照画像が未登録、または画像コピーに非対応のブラウザのときの、ボタンの理由表示(title属性)。 */
+function imageActionDisabledReason(hasImage: boolean): string {
+  if (!hasImage) {
+    return '先に参照画像を登録してください。';
+  }
+  if (!isClipboardImageSupported()) {
+    return 'このブラウザでは画像のコピーに対応していません。';
+  }
+  return '';
+}
+
+/** 「画像をコピー」ボタンを作る(参照画像登録エリア・プロンプト出力欄の両方で使う、追加修正指示書 第7弾 項目24)。 */
+function createCopyImageButton(getReferenceImage: () => ReferenceImageState | null): {
+  element: HTMLButtonElement;
+  refresh: () => void;
+} {
+  const button = h('button', {
+    className: 'button',
+    attrs: { type: 'button' },
+    text: '画像をコピー',
+    on: {
+      click: () => {
+        const reference = getReferenceImage();
+        if (!reference) {
+          return;
+        }
+        void toPngBlob(reference.dataUrl)
+          .then((blob) => copyImageToClipboard(blob))
+          .then((ok) => {
+            showToast(
+              ok ? '画像をコピーしました。ChatGPTの入力欄に貼り付けてください。' : CLIPBOARD_COPY_FAILURE_MESSAGE,
+              ok ? 'success' : 'error',
+            );
+          })
+          .catch(() => showToast(CLIPBOARD_COPY_FAILURE_MESSAGE, 'error'));
+      },
+    },
+  });
+
+  function refresh(): void {
+    const hasImage = getReferenceImage() !== null;
+    button.toggleAttribute('disabled', !hasImage || !isClipboardImageSupported());
+    button.title = imageActionDisabledReason(hasImage);
+  }
+
+  return { element: button, refresh };
+}
+
+/** 「画像を保存」ボタンを作る(PNGでダウンロード、参照画像登録エリアのみに置く)。 */
+function createSaveImageButton(getReferenceImage: () => ReferenceImageState | null): {
+  element: HTMLButtonElement;
+  refresh: () => void;
+} {
+  const button = h('button', {
+    className: 'button',
+    attrs: { type: 'button' },
+    text: '画像を保存',
+    on: {
+      click: () => {
+        const reference = getReferenceImage();
+        if (!reference) {
+          return;
+        }
+        void toPngBlob(reference.dataUrl)
+          .then((blob) => {
+            const baseName = reference.fileName.replace(/\.[^.]+$/, '') || 'reference-image';
+            downloadBlob(blob, `${baseName}.png`);
+          })
+          .catch(() => showToast('画像の保存に失敗しました。', 'error'));
+      },
+    },
+  });
+
+  function refresh(): void {
+    const hasImage = getReferenceImage() !== null;
+    button.toggleAttribute('disabled', !hasImage);
+    button.title = hasImage ? '' : '先に参照画像を登録してください。';
+  }
+
+  return { element: button, refresh };
+}
+
+interface ReferenceImageSectionHandle {
+  element: HTMLElement;
+  /** プロンプト出力欄側の「画像をコピー」ボタンも、参照画像の変更に連動させるために呼ぶ。 */
+  registerExtraRefresher: (refresh: () => void) => void;
+}
+
 /** 参照画像の登録セクション(メモリ上のみで保持。ページを閉じると消える)。 */
-function createReferenceImageSection(state: PromptViewState): HTMLElement {
+function createReferenceImageSection(state: PromptViewState): ReferenceImageSectionHandle {
   const previewImg = h('img', {
     className: 'reference-image__preview',
     attrs: { alt: '参照画像のプレビュー' },
@@ -129,6 +221,16 @@ function createReferenceImageSection(state: PromptViewState): HTMLElement {
     },
   });
 
+  const getReferenceImage = (): ReferenceImageState | null => state.referenceImage;
+  const copyImageButton = createCopyImageButton(getReferenceImage);
+  const saveImageButton = createSaveImageButton(getReferenceImage);
+  const unsupportedNotice = h('p', {
+    className: 'field__hint',
+    text: 'このブラウザでは画像のコピーに対応していません。「画像を保存」を使ってください。',
+  });
+
+  const extraRefreshers: Array<() => void> = [];
+
   function updatePreview(): void {
     if (state.referenceImage) {
       previewImg.src = state.referenceImage.dataUrl;
@@ -139,6 +241,10 @@ function createReferenceImageSection(state: PromptViewState): HTMLElement {
       previewImg.hidden = true;
       removeButton.hidden = true;
     }
+    copyImageButton.refresh();
+    saveImageButton.refresh();
+    unsupportedNotice.hidden = isClipboardImageSupported();
+    extraRefreshers.forEach((refresh) => refresh());
   }
 
   const dropzone = createDropzone({
@@ -162,7 +268,18 @@ function createReferenceImageSection(state: PromptViewState): HTMLElement {
 
   updatePreview();
 
-  return h('div', { className: 'reference-image' }, [dropzone, previewImg, removeButton]);
+  const element = h('div', { className: 'reference-image' }, [
+    dropzone,
+    previewImg,
+    h('div', { className: 'toolbar' }, [copyImageButton.element, saveImageButton.element]),
+    unsupportedNotice,
+    removeButton,
+  ]);
+
+  return {
+    element,
+    registerExtraRefresher: (refresh) => extraRefreshers.push(refresh),
+  };
 }
 
 interface RowsTableHandle {
@@ -478,16 +595,20 @@ export function createPromptView(): HTMLElement {
           return;
         }
         copyToClipboard(lastPrompt).then((ok) => {
-          showToast(
-            ok
-              ? 'クリップボードにコピーしました。'
-              : 'コピーに失敗しました。本文を選択して手動でコピーしてください。',
-            ok ? 'success' : 'error',
-          );
+          if (!ok) {
+            showToast('コピーに失敗しました。本文を選択して手動でコピーしてください。', 'error');
+            return;
+          }
+          const suffix = state.referenceImage
+            ? ' 次は、参照画像もChatGPTに貼り付けてください。'
+            : '';
+          showToast(`クリップボードにコピーしました。${suffix}`);
         });
       },
     },
   });
+
+  const copyImageButtonInFooter = createCopyImageButton(() => state.referenceImage);
 
   const saveProjectButton = h('button', {
     className: 'button',
@@ -551,6 +672,10 @@ export function createPromptView(): HTMLElement {
 
   updateWarningBanner();
 
+  const referenceImageSection = createReferenceImageSection(state);
+  referenceImageSection.registerExtraRefresher(copyImageButtonInFooter.refresh);
+  copyImageButtonInFooter.refresh();
+
   return h('div', { className: 'prompt-view' }, [
     h('p', {
       className: 'callout',
@@ -558,7 +683,7 @@ export function createPromptView(): HTMLElement {
     }),
 
     createSectionHeading('参照画像'),
-    createReferenceImageSection(state),
+    referenceImageSection.element,
 
     createSectionHeading('24個のセリフ・状況'),
     h('div', { className: 'toolbar' }, [pasteButton, templateButton]),
@@ -573,6 +698,10 @@ export function createPromptView(): HTMLElement {
 
     createSectionHeading('生成されたプロンプト'),
     h('div', { className: 'output__textarea-group' }, [outputFixedTextarea, outputContentTextarea]),
-    h('div', { className: 'output__footer' }, [charCount, copyButton]),
+    h('div', { className: 'output__footer' }, [
+      charCount,
+      copyButton,
+      copyImageButtonInFooter.element,
+    ]),
   ]);
 }
