@@ -494,11 +494,13 @@ export interface PreviewViewHandle {
 
 /**
  * タブ②ステップB(カードプレビュー+左の調整パネル)の画面を構築する。
- * `onFixFrames` は「枠を修正」が押されたときに、現在の `SheetStore`・`ProjectState` とともに呼ばれる
- * (このビュー内で行った調整・採用元変更はこのビューの外からは見えないため、戻すタイミングで渡す)。
+ * `onFixFrames` は「← 枠の調整に戻る」が押されたときに、現在の `SheetStore`・`ProjectState`・
+ * 選択中のスタンプ番号とともに呼ばれる(このビュー内で行った調整・採用元変更はこのビューの外からは
+ * 見えないため、戻すタイミングで渡す。選択中の番号は、ステップAでその枠を自動選択するために使う。
+ * 追加修正指示書 第6弾 項目23)。
  */
 export function createPreviewView(
-  onFixFrames: (store: SheetStore, project: ProjectState) => void,
+  onFixFrames: (store: SheetStore, project: ProjectState, selectedIndex: number) => void,
 ): PreviewViewHandle {
   let store: SheetStore = { sheets: [], images: new Map() };
   let project: ProjectState | null = null;
@@ -966,13 +968,13 @@ export function createPreviewView(
   });
 
   const fixFramesButton = h('button', {
-    className: 'button',
+    className: 'button fix-frames-button',
     attrs: { type: 'button' },
-    text: '枠を修正',
+    text: '← 枠の調整に戻る',
     on: {
       click: () => {
         if (project) {
-          onFixFrames(store, project);
+          onFixFrames(store, project, selectedIndex);
         }
       },
     },

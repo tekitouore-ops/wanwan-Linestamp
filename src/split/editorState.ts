@@ -53,7 +53,7 @@ export function createEditorState(detectionResult: DetectionResult): EditorState
 
 /**
  * すでに確定済みの枠(`Rect[]`)からエディタの状態を作る。シートタブの切り替えや、
- * ステップBから「枠を修正」で戻ってきた場合に使う(警告なしの状態として扱う。
+ * ステップBから「← 枠の調整に戻る」で戻ってきた場合に使う(警告なしの状態として扱う。
  * 必要なら「再検出」で警告を再計算できる)。
  */
 export function createEditorStateFromFrames(
@@ -274,6 +274,22 @@ export function getStampFrame(project: ProjectState, index: number): Rect | unde
 
 export function getStampFrameWarnings(project: ProjectState, index: number): CellWarning[] {
   return getSourceSheet(project, index)?.frameWarnings[index] ?? [];
+}
+
+/**
+ * ステップBから「枠の調整に戻る」で戻るときに、ステップAで自動選択すべき採用元シートid・
+ * 枠番号を求める(追加修正指示書 第6弾 項目23)。指定スタンプの採用元シートが見つからない
+ * (`index`が範囲外、または採用元シートが削除済み等)場合は`null`を返す。
+ */
+export function resolveStepAReturnTarget(
+  project: ProjectState,
+  selectedIndex: number,
+): { sheetId: string; cellIndex: number } | null {
+  const sheet = getSourceSheet(project, selectedIndex);
+  if (!sheet) {
+    return null;
+  }
+  return { sheetId: sheet.id, cellIndex: selectedIndex };
 }
 
 /** 選択中スタンプの、現在の採用元シートに対する消しゴムマスクを得る(追加修正指示書 第5弾 項目19)。 */

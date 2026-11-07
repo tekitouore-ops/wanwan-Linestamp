@@ -659,6 +659,19 @@ body {
   border-bottom: 1px solid var(--color-border);
 }
 
+/* 「← 枠の調整に戻る」(ステップAへの戻り導線、追加修正指示書 第6弾 項目23)。
+   目立つように、常にアクセント色の太めの枠線を付ける。 */
+.fix-frames-button {
+  border: 2px solid var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.fix-frames-button:hover {
+  background: var(--color-accent);
+  color: #fff;
+}
+
 .preview-main {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);

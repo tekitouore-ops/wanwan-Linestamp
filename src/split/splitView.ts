@@ -1,6 +1,6 @@
 import { h } from '../shared/dom';
 import { createDetectView } from './detectView';
-import { confirmSheets } from './editorState';
+import { confirmSheets, resolveStepAReturnTarget } from './editorState';
 import { createPreviewView } from './previewView';
 import type { ProjectState } from './types';
 
@@ -22,12 +22,14 @@ export function createSplitView(): HTMLElement {
     previewElement.hidden = false;
   }
 
-  const previewView = createPreviewView((store, latestProject) => {
-    // 「枠を修正」: ステップBでの調整内容(採用元・個別設定)を引き継いだ上でステップAへ戻り、
-    // 現在のシート一式をそのまま再表示する。
+  const previewView = createPreviewView((store, latestProject, selectedIndex) => {
+    // 「← 枠の調整に戻る」: ステップBでの調整内容(採用元・個別設定)を引き継いだ上でステップAへ戻り、
+    // 現在のシート一式をそのまま再表示する。選択中だったスタンプの採用元シート・番号を、
+    // ステップA側で自動選択する(追加修正指示書 第6弾 項目23)。
     project = latestProject;
-    const activeSheetId = project.sheets[0]?.id ?? null;
-    detectView.openWithExisting(store, activeSheetId);
+    const target = resolveStepAReturnTarget(project, selectedIndex);
+    const activeSheetId = target?.sheetId ?? project.sheets[0]?.id ?? null;
+    detectView.openWithExisting(store, activeSheetId, target?.cellIndex ?? null);
     showStepA();
   });
 

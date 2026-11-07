@@ -37,6 +37,9 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   「この枠で確定」で全シートぶんをまとめてステップBへ渡す(`editorState.ts: confirmSheets`)。
   枠編集(移動・リサイズ・入れ替え・リセット等)は`split/history.ts`の`History<EditorState>`でUndo/Redoできる。
   操作確定時(ドラッグ終了・ボタン押下・キー押下)に1手コミットし、シート切替・再検出時は履歴を作り直す。
+  リサイズハンドルの判定・配置・Shift(縦横比維持)/Alt(中心固定)の計算は、DOM非依存の純粋関数として
+  `split/boxResize.ts`に切り出してあり(`detectView.ts`はそれを呼ぶだけ)、Vitestで単体テストする
+  (2026-11-07、追加修正指示書 第6弾 項目22)。
 - **ステップB**(`split/previewView.ts` が全体レイアウトを担当):
   - 左: 調整パネル(`split/adjustPanel.ts`、選択中の1枚の個別設定+採用元選択〈`split/sourcePicker.ts`〉+
     折りたたみ式の全体設定)。「全シートで比較…」(`split/compareDialog.ts`)、「採用元をまとめて設定…」
@@ -46,9 +49,12 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   - 右: カードグリッド(`split/stampCard.ts` を24個並べる。シートが2枚以上なら採用元バッジ表示)+
     上部バー(`split/backgroundPicker.ts` の確認用背景切替、選択中の1枚を実寸〜2倍で表示する
     拡大プレビュー〈`updateLargePreview`、2026-11-05 追加修正指示書 第3弾 項目16〉、ZIP書き出しボタン)
-  - ステップBから「枠を修正」でステップAへ戻れる。戻っても、採用元シートの枠を変えていないスタンプの
-    個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す(画像データの
-    再読み込みを避けるため)。
+  - ステップBから「← 枠の調整に戻る」でステップAへ戻れる。戻っても、採用元シートの枠を変えていない
+    スタンプの個別設定(`ProjectState.stamps`)は保持する。`SheetStore`はステップA/B間で共有して渡す
+    (画像データの再読み込みを避けるため)。戻るときは、選択中だったスタンプ番号を
+    `createPreviewView`のコールバックに渡し、`editorState.ts: resolveStepAReturnTarget`で採用元
+    シートid・枠番号を求めて、ステップAでその枠を自動選択・カメラフィット(`split/cameraFit.ts`)する
+    (2026-11-07、追加修正指示書 第6弾 項目23)。
   - このステップの操作(採用元切替・個別設定・表紙設定・全体設定・一括操作等)は、ステップAとは別の
     `History<ProjectState>`(`split/history.ts`)でUndo/Redoできる。スライダーはドラッグ終了時に1手、
     ボタンは押下ごとに1手コミットする(`ui/slider.ts`の`onCommit`で、ドラッグ中〈`onChange`〉と
