@@ -1,4 +1,4 @@
-import { h } from '../shared/dom';
+import { h, isEditableEventTarget, shouldHandleEnter } from '../shared/dom';
 import type { Sheet } from './types';
 
 export interface SheetTabsCallbacks {
@@ -36,6 +36,22 @@ export function createSheetTabs(callbacks: SheetTabsCallbacks): SheetTabsHandle 
       nameInput.addEventListener('change', () =>
         callbacks.onRename(sheet.id, nameInput.value.trim() || sheet.name),
       );
+      /**
+       * 日本語名のIME変換を確定するEnterで、親タブの選択(keydownのバブリング)が
+       * 誤って発火しないようにする。確定Enterのときだけ、入力を確定(blur)させる
+       * (追加修正指示書 第8弾 項目27)。
+       */
+      let lastCompositionEndTime: number | null = null;
+      nameInput.addEventListener('compositionend', (event) => {
+        lastCompositionEndTime = event.timeStamp;
+      });
+      nameInput.addEventListener('keydown', (event) => {
+        if (!shouldHandleEnter(event, lastCompositionEndTime)) {
+          return;
+        }
+        event.preventDefault();
+        nameInput.blur();
+      });
 
       const upButton = h('button', {
         className: 'button button--text',
@@ -73,6 +89,12 @@ export function createSheetTabs(callbacks: SheetTabsCallbacks): SheetTabsHandle 
       );
       tab.addEventListener('click', () => callbacks.onSelect(sheet.id));
       tab.addEventListener('keydown', (event) => {
+        // 名前欄(nameInput)でのEnter/スペース入力がバブリングしてきても、タブ選択扱いにしない
+        // (日本語名のIME変換確定・スペース入力が、誤ってタブを選択してしまう不具合の防止。
+        // 追加修正指示書 第8弾 項目27)。
+        if (isEditableEventTarget(event.target)) {
+          return;
+        }
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           callbacks.onSelect(sheet.id);
