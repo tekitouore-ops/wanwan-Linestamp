@@ -158,6 +158,9 @@ wanwan-Linestamp/
 まとめています。**実際に申請する前に、必ず [LINE Creators Market](https://creator.line.me/) 公式の
 最新ガイドラインを確認してください。** 規格は変更される場合があります。
 
+提出前には [`docs/release-checklist.md`](docs/release-checklist.md) の最終チェックリストも
+あわせてご利用ください。
+
 ## 注意事項
 
 - LINE Creators Marketの審査ガイドライン(表現・著作権・商標など)は本ツールの対象外です。申請前に公式ガイドラインを確認してください。
