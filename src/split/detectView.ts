@@ -11,6 +11,17 @@ import { createDropzone } from '../ui/dropzone';
 import { createSliderField } from '../ui/slider';
 import { showToast } from '../ui/toast';
 import {
+  HANDLE_HIT_RADIUS_SCREEN_PX,
+  HANDLE_SIZE_SCREEN_PX,
+  applyResize,
+  computeVisibleHandles,
+  cursorForHandle,
+  getHandlePoints,
+  hitTestHandle,
+  type ResizeHandle,
+  type ResizeModifiers,
+} from './boxResize';
+import {
   applyEditorStateToSheet,
   createEditorStateFromFrames,
   createEmptyEditorState,
@@ -58,12 +69,11 @@ import {
 
 const VIEWPORT_WIDTH = 900;
 const VIEWPORT_HEIGHT = 600;
-const HANDLE_SCREEN_PX = 9;
 /** これを超える辺の長さの画像は、処理に時間がかかる可能性がある旨を警告する(処理自体は続行する)。 */
 const HUGE_IMAGE_WARNING_DIMENSION_PX = DETECTION_MAX_DIMENSION_PX * 2;
 const STAMP_COUNT_PER_SHEET = DEFAULT_GRID.cols * DEFAULT_GRID.rows;
-
-type ResizeHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+/** 枠外を暗くするオーバーレイの不透明度(追加修正指示書 第6弾 項目22)。 */
+const DARKEN_OUTSIDE_ALPHA = 0.2;
 
 type DragMode =
   | { kind: 'move'; index: number; startImageX: number; startImageY: number; startBox: Rect }
@@ -101,60 +111,6 @@ function clampBoxToImage(box: Rect, image: ImageDataLike): Rect {
     width: Math.round(width),
     height: Math.round(height),
   };
-}
-
-function applyResize(box: Rect, handle: ResizeHandle, imageX: number, imageY: number): Rect {
-  let x = box.x;
-  let y = box.y;
-  let right = box.x + box.width;
-  let bottom = box.y + box.height;
-  if (handle.includes('w')) {
-    x = Math.min(imageX, right - 1);
-  }
-  if (handle.includes('e')) {
-    right = Math.max(imageX, x + 1);
-  }
-  if (handle.includes('n')) {
-    y = Math.min(imageY, bottom - 1);
-  }
-  if (handle.includes('s')) {
-    bottom = Math.max(imageY, y + 1);
-  }
-  return { x, y, width: right - x, height: bottom - y };
-}
-
-function getHandlePoints(box: Rect): Record<ResizeHandle, { x: number; y: number }> {
-  const { x, y, width, height } = box;
-  return {
-    nw: { x, y },
-    n: { x: x + width / 2, y },
-    ne: { x: x + width, y },
-    w: { x, y: y + height / 2 },
-    e: { x: x + width, y: y + height / 2 },
-    sw: { x, y: y + height },
-    s: { x: x + width / 2, y: y + height },
-    se: { x: x + width, y: y + height },
-  };
-}
-
-function hitTestHandle(
-  box: Rect,
-  imageX: number,
-  imageY: number,
-  tolerance: number,
-): ResizeHandle | null {
-  const points = getHandlePoints(box);
-  let closest: ResizeHandle | null = null;
-  let closestDist = tolerance;
-  (Object.keys(points) as ResizeHandle[]).forEach((key) => {
-    const point = points[key];
-    const dist = Math.hypot(point.x - imageX, point.y - imageY);
-    if (dist <= closestDist) {
-      closestDist = dist;
-      closest = key;
-    }
-  });
-  return closest;
 }
 
 function dilateBox(box: Rect, marginRatio: number, image: ImageDataLike): Rect {
@@ -242,6 +198,12 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
   /** スペースキーが押されている間は、枠の選択状態にかかわらずドラッグをパンにする。 */
   let spacePressed = false;
   const camera = { zoom: 1, panX: 0, panY: 0 };
+  /** ドラッグしていないときに、ポインタが乗っているハンドル(ハイライト・カーソル切替用)。 */
+  let hoveredHandle: ResizeHandle | null = null;
+  /** ドラッグしていないときに、ポインタが選択中の枠の内側にあるか(moveカーソル用)。 */
+  let hoveredInsideSelected = false;
+  /** 「枠外を暗くする」トグル(既定ON。追加修正指示書 第6弾 項目22)。 */
+  let darkenOutside = true;
 
   /** シートごとの「均等分割を使うか」「直近の検出方式ラベル」(保存JSON・Sheet型には含めないUIのみの状態)。 */
   const uiStateBySheet = new Map<
@@ -524,6 +486,19 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     text: '表示背景切替(市松/暗色)',
     on: { click: () => canvas.classList.toggle('split-canvas--dark') },
   });
+  const darkenOutsideButton = h('button', {
+    className: 'button button--active',
+    attrs: { type: 'button', 'aria-pressed': 'true' },
+    text: '枠外を暗くする',
+    on: {
+      click: () => {
+        darkenOutside = !darkenOutside;
+        darkenOutsideButton.classList.toggle('button--active', darkenOutside);
+        darkenOutsideButton.setAttribute('aria-pressed', String(darkenOutside));
+        render();
+      },
+    },
+  });
 
   const numberSelect = h('select', {});
   for (let i = 1; i <= STAMP_COUNT_PER_SHEET; i += 1) {
@@ -745,11 +720,24 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     }
 
     const scale = getScale();
+    const selectedCell =
+      editor.selectedIndex !== null ? getCell(editor, editor.selectedIndex) : undefined;
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
     ctx.scale(scale, scale);
     ctx.translate(-camera.panX, -camera.panY);
     ctx.drawImage(cachedCanvas, 0, 0);
+
+    // 選択中の枠の外側を薄く暗くし、切り出される範囲を分かりやすくする(追加修正指示書 第6弾 項目22)。
+    if (darkenOutside && selectedCell) {
+      const box = selectedCell.box;
+      ctx.fillStyle = `rgba(0, 0, 0, ${DARKEN_OUTSIDE_ALPHA})`;
+      ctx.fillRect(0, 0, image.width, box.y);
+      ctx.fillRect(0, box.y + box.height, image.width, image.height - (box.y + box.height));
+      ctx.fillRect(0, box.y, box.x, box.height);
+      ctx.fillRect(box.x + box.width, box.y, image.width - (box.x + box.width), box.height);
+    }
 
     editor.cells.forEach((cell) => {
       const isSelected = cell.index === editor.selectedIndex;
@@ -770,6 +758,42 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
       ctx.fillStyle = '#ffffff';
       ctx.fillText(String(cell.index + 1), screenX + 4, screenY + 2);
     });
+
+    // 選択中の枠のリサイズハンドル(画面上で固定サイズ、追加修正指示書 第6弾 項目22)。
+    if (selectedCell) {
+      const box = selectedCell.box;
+      const visibleHandles = computeVisibleHandles(box.width * scale, box.height * scale);
+      const points = getHandlePoints(box);
+      const half = HANDLE_SIZE_SCREEN_PX / 2;
+      visibleHandles.forEach((handle) => {
+        const point = points[handle];
+        const screenX = (point.x - camera.panX) * scale;
+        const screenY = (point.y - camera.panY) * scale;
+        const isHovered = handle === hoveredHandle;
+        ctx.fillStyle = isHovered ? '#2d6cdf' : '#ffffff';
+        ctx.strokeStyle = '#2d6cdf';
+        ctx.lineWidth = isHovered ? 2.5 : 1.5;
+        ctx.fillRect(screenX - half, screenY - half, HANDLE_SIZE_SCREEN_PX, HANDLE_SIZE_SCREEN_PX);
+        ctx.strokeRect(screenX - half, screenY - half, HANDLE_SIZE_SCREEN_PX, HANDLE_SIZE_SCREEN_PX);
+      });
+    }
+
+    // ドラッグ中(移動・リサイズ・新規描画)は、枠の幅・高さ(px)を枠の近くに小さく表示する。
+    if (dragMode && (dragMode.kind === 'move' || dragMode.kind === 'resize' || dragMode.kind === 'draw')) {
+      const draggedCell = getCell(editor, dragMode.index);
+      if (draggedCell) {
+        const box = draggedCell.box;
+        const label = `${Math.round(box.width)}×${Math.round(box.height)}px`;
+        const screenX = (box.x - camera.panX) * scale;
+        const screenY = (box.y - camera.panY) * scale;
+        const labelWidth = ctx.measureText(label).width + 8;
+        const labelY = Math.max(0, screenY - 20);
+        ctx.fillStyle = 'rgba(45, 108, 223, 0.9)';
+        ctx.fillRect(screenX, labelY, labelWidth, 16);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, screenX + 4, labelY + 2);
+      }
+    }
 
     updateMethodLabel();
     updateWarningList(editor);
@@ -825,12 +849,19 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     }
 
     const scale = getScale();
-    const handleTolerance = HANDLE_SCREEN_PX / scale;
+    const handleTolerance = HANDLE_HIT_RADIUS_SCREEN_PX / scale;
     const selected =
       editor.selectedIndex !== null ? getCell(editor, editor.selectedIndex) : undefined;
 
     if (selected) {
-      const handle = hitTestHandle(selected.box, imagePoint.x, imagePoint.y, handleTolerance);
+      const handle = hitTestHandle(
+        selected.box,
+        imagePoint.x,
+        imagePoint.y,
+        handleTolerance,
+        selected.box.width * scale,
+        selected.box.height * scale,
+      );
       if (handle) {
         dragMode = { kind: 'resize', index: selected.index, handle, startBox: selected.box };
         canvas.setPointerCapture(event.pointerId);
@@ -874,14 +905,59 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     canvas.setPointerCapture(event.pointerId);
   });
 
+  /**
+   * ドラッグしていないときの、ハンドル・枠内へのホバー状態を更新する(ハイライト・カーソル切替用)。
+   * 変化があったときだけカーソル更新・再描画を行う(追加修正指示書 第6弾 項目22)。
+   */
+  function updateHoverState(screenX: number, screenY: number): void {
+    if (eyedropperActive) {
+      return;
+    }
+    const editor = editorStore.getState();
+    const image = getActiveImage();
+    const selected =
+      editor && image && editor.selectedIndex !== null
+        ? getCell(editor, editor.selectedIndex)
+        : undefined;
+
+    let nextHandle: ResizeHandle | null = null;
+    let nextInside = false;
+    if (selected && image) {
+      const scale = getScale();
+      const imagePoint = screenToImage(screenX, screenY);
+      const handleTolerance = HANDLE_HIT_RADIUS_SCREEN_PX / scale;
+      nextHandle = hitTestHandle(
+        selected.box,
+        imagePoint.x,
+        imagePoint.y,
+        handleTolerance,
+        selected.box.width * scale,
+        selected.box.height * scale,
+      );
+      nextInside = !nextHandle && pointInBox(imagePoint, selected.box);
+    }
+
+    if (nextHandle !== hoveredHandle || nextInside !== hoveredInsideSelected) {
+      hoveredHandle = nextHandle;
+      hoveredInsideSelected = nextInside;
+      updateIdleCursor();
+      render();
+    }
+  }
+
   canvas.addEventListener('pointermove', (event) => {
     const image = getActiveImage();
-    if (!dragMode || !image) {
+    if (!image) {
       return;
     }
     const rect = canvas.getBoundingClientRect();
     const screenX = event.clientX - rect.left;
     const screenY = event.clientY - rect.top;
+
+    if (!dragMode) {
+      updateHoverState(screenX, screenY);
+      return;
+    }
 
     if (dragMode.kind === 'pan') {
       const scale = getScale();
@@ -903,8 +979,9 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
       const targetIndex = dragMode.index;
       editorStore.setState((s) => (s ? updateCellBox(s, targetIndex, box) : s));
     } else if (dragMode.kind === 'resize') {
+      const modifiers: ResizeModifiers = { shiftKey: event.shiftKey, altKey: event.altKey };
       const box = clampBoxToImage(
-        applyResize(dragMode.startBox, dragMode.handle, imagePoint.x, imagePoint.y),
+        applyResize(dragMode.startBox, dragMode.handle, imagePoint.x, imagePoint.y, modifiers),
         image,
       );
       const targetIndex = dragMode.index;
@@ -924,7 +1001,17 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     if (dragMode) {
       return;
     }
-    canvas.style.cursor = spacePressed ? 'grab' : eyedropperActive ? 'crosshair' : '';
+    if (spacePressed) {
+      canvas.style.cursor = 'grab';
+    } else if (eyedropperActive) {
+      canvas.style.cursor = 'crosshair';
+    } else if (hoveredHandle) {
+      canvas.style.cursor = cursorForHandle(hoveredHandle);
+    } else if (hoveredInsideSelected) {
+      canvas.style.cursor = 'move';
+    } else {
+      canvas.style.cursor = '';
+    }
   }
 
   canvas.addEventListener('pointerup', (event) => {
@@ -936,6 +1023,9 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
     if (wasEditingBox) {
       commitEditorHistory();
     }
+    const rect = canvas.getBoundingClientRect();
+    updateHoverState(event.clientX - rect.left, event.clientY - rect.top);
+    render();
   });
   canvas.addEventListener('pointercancel', () => {
     dragMode = null;
@@ -1168,7 +1258,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
 
   const panHint = h('p', {
     className: 'split-method-label',
-    text: '操作: スペース+ドラッグ(またはホイールクリック+ドラッグ)で移動 / ホイールで拡大縮小',
+    text: '操作: スペース+ドラッグ(またはホイールクリック+ドラッグ)で移動 / ホイールで拡大縮小 / ハンドルドラッグでリサイズ(Shiftで縦横比維持、Altで中心固定)',
   });
 
   const workspace = h('div', { className: 'split-layout' }, [
@@ -1182,6 +1272,7 @@ export function createDetectView(onConfirm: (store: SheetStore) => void): Detect
         zoomInButton,
         zoomResetButton,
         darkBgButton,
+        darkenOutsideButton,
       ]),
     ]),
     h('div', { className: 'split-side-panel' }, [

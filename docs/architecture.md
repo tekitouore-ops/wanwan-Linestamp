@@ -37,6 +37,9 @@ export                      →  split の型のみ参照可(Rect・StampAdjust�
   「この枠で確定」で全シートぶんをまとめてステップBへ渡す(`editorState.ts: confirmSheets`)。
   枠編集(移動・リサイズ・入れ替え・リセット等)は`split/history.ts`の`History<EditorState>`でUndo/Redoできる。
   操作確定時(ドラッグ終了・ボタン押下・キー押下)に1手コミットし、シート切替・再検出時は履歴を作り直す。
+  リサイズハンドルの判定・配置・Shift(縦横比維持)/Alt(中心固定)の計算は、DOM非依存の純粋関数として
+  `split/boxResize.ts`に切り出してあり(`detectView.ts`はそれを呼ぶだけ)、Vitestで単体テストする
+  (2026-11-07、追加修正指示書 第6弾 項目22)。
 - **ステップB**(`split/previewView.ts` が全体レイアウトを担当):
   - 左: 調整パネル(`split/adjustPanel.ts`、選択中の1枚の個別設定+採用元選択〈`split/sourcePicker.ts`〉+
     折りたたみ式の全体設定)。「全シートで比較…」(`split/compareDialog.ts`)、「採用元をまとめて設定…」
