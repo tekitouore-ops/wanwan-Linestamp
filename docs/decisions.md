@@ -824,3 +824,35 @@ README.mdの「LINEスタンプ規格について」節(LINE公式ガイドラ�
 指示書の指定どおり項目名だけを列挙し、具体的な値・規則(サイズや枚数の実際の数値等)は一切
 書き込んでいない(`src/shared/lineSpec.ts`等のコード側だけが実際の値を持ち、このチェックリストが
 将来の規格変更で古い情報のまま固定化されることを避けるため)。
+
+## 2026-11-07: IME変換確定Enterの誤動作修正(追加修正指示書 第8弾 項目27)
+
+`shouldHandleEnter`(DOM非依存の純粋関数)を`shared/dom.ts`に新設し、`isEditableEventTarget`と
+同じ場所に置いた(どちらも「キーボード操作をどう扱うか」のDOM非依存ガードという共通の役割のため)。
+
+- **判定は`event.key==='Enter'`も含めて関数側で行う**: 呼び出し側が`event.key`のチェックを
+  別途書かずに済むよう、`shouldHandleEnter`自体が「このkeydownを確定Enterとして扱ってよいか」を
+  丸ごと判定する設計にした。
+- **Safari対策の猶予時間は、`performance.now()`ではなく`event.timeStamp`で比較する**: 呼び出し側で
+  `compositionend`イベントの`event.timeStamp`を記憶しておき、次に来る`keydown`イベント自身の
+  `event.timeStamp`と比較する。どちらもブラウザが発行するDOMイベントの`timeStamp`(モノトニックな
+  値)なので、`performance.now()`を別途呼ぶより依存が少なく、テストでも実時間を待たずに
+  (タイムスタンプの数値を直接指定して)検証できる。
+- **`src/prompt/promptView.ts`(24行の入力表)**: `compositionend`はどの行の入力欄から発生しても
+  `tbody`までバブリングするため、`tbody`に1つだけリスナーを置いて`lastCompositionEndTime`を
+  一括管理する(24行×2列ぶん個別にリスナーを持たせる必要がない)。
+- **`src/split/sheetTabs.ts`(シート名の変更)で見つかった、別種の不具合も合わせて修正した**:
+  シート名の入力欄(`nameInput`)自体にはEnter処理がなかったが、親のタブ要素(`tab`)が
+  「Enter/スペースでタブを選択する」というキーボード操作対応のために`keydown`を監視しており、
+  `nameInput`で発生したEnterの`keydown`がバブリングして、そちらが誤って反応していた
+  (IME変換確定のEnterで、タブが選択されてしまう)。これは`shouldHandleEnter`だけでは直接
+  解決できない「別要素への意図しないバブリング」の問題のため、`isEditableEventTarget`
+  (既存のユーティリティ)を使って、`event.target`が入力要素のときはタブ側の`keydown`処理を
+  早期リターンするよう修正した。あわせて、`nameInput`側にも`shouldHandleEnter`で確定Enterだけを
+  拾って`blur()`する(名前を確定する)処理を追加し、Enterキーでの確定操作そのものは保てるように
+  した。
+- **grep調査で確認した、修正不要な箇所**: `src/split/stampCard.ts`・`src/ui/dropzone.ts`の
+  Enter/スペース処理は、どちらもテキスト入力を含まないカード/ドロップゾーン要素自体への
+  キーボード操作(クリック相当)で、IME変換の影響を受けないため変更していない。貼り付けダイアログ
+  (`csvDialog`のテキストエリア)・追加指示/キャラクター補足(`settingsForm`のテキストエリア)には、
+  そもそも独自のEnterキー処理が存在しない(標準の改行動作のまま)ため、修正対象なし。

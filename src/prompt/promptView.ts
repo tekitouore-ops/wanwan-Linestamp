@@ -1,4 +1,4 @@
-import { h } from '../shared/dom';
+import { h, shouldHandleEnter } from '../shared/dom';
 import { downloadBlob, downloadTextFile, openFilePicker } from '../shared/file';
 import { STAMP_COUNT } from '../shared/lineSpec';
 import { createDropzone } from '../ui/dropzone';
@@ -294,6 +294,15 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
   const inputs: Record<Column, HTMLInputElement>[] = [];
   const tbody = h('tbody');
 
+  /**
+   * IME変換確定時の誤操作防止(追加修正指示書 第8弾 項目27)。`compositionend`は、
+   * どの行の入力欄から発生しても`tbody`までバブリングするため、ここで一括して捕まえる。
+   */
+  let lastCompositionEndTime: number | null = null;
+  tbody.addEventListener('compositionend', (event) => {
+    lastCompositionEndTime = event.timeStamp;
+  });
+
   for (let index = 0; index < state.rows.length; index += 1) {
     const lineInput = h('input', {
       className: 'rows-table__input',
@@ -325,10 +334,12 @@ function createRowsTable(state: PromptViewState, onChange: () => void): RowsTabl
 
     columns.forEach((column) => {
       rowInputs[column].addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          inputs[index + 1]?.[column].focus();
+        if (!shouldHandleEnter(event, lastCompositionEndTime)) {
+          // IME変換中の確定Enterは、何もしない(確定のみを行わせる)。
+          return;
         }
+        event.preventDefault();
+        inputs[index + 1]?.[column].focus();
       });
     });
 
