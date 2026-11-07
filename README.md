@@ -20,7 +20,11 @@ LINEスタンプ(静止画24個セット)の制作を助けるブラウザ内ツ
 1. タブ①で参照画像(キャラクターの元絵)を登録し、24行の表に「セリフ」「状況」を入力します。
    貼り付けは`『セリフ』｜状況`形式、`セリフ,状況`のCSV/TSV、旧`お題,状況,セリフ`形式のいずれにも
    自動判定で対応しています。背景は常に透過を指定するプロンプトになります。
-2. 「プロンプトを生成」→「クリップボードにコピー」します。
+2. 「プロンプトを生成」→「クリップボードにコピー」します。参照画像を登録していれば、隣の
+   「画像をコピー」で参照画像もワンクリックでコピーできます(参照画像の登録エリアにも同じボタンと、
+   PNGで保存できる「画像を保存」ボタンがあります。JPEG/WebPでもPNGに変換してコピー・保存されます)。
+   クリップボードへの画像コピーに対応していないブラウザでは、ボタンが無効になり「画像を保存」を
+   使うよう案内が出ます。
 3. ChatGPTに参照画像を添付したうえで、コピーしたプロンプトを貼って画像を生成します。
 4. 生成された1枚のシート画像(6列×4行、24個のイラスト)をダウンロードします。ChatGPTが透過PNGを
    返さず、白背景や市松模様(見かけだけの透過)の画像になることがあります。その場合は、タブ②で
@@ -104,7 +108,20 @@ npm test            # Vitestでユニットテストを実行
 npm run typecheck   # TypeScriptの型チェック
 npm run lint        # ESLint
 npm run format      # Prettierでフォーマット
+npm run verify:zip -- path/to/stamps_YYYYMMDD_HHMM.zip  # 書き出しZIPの自動検証(下記参照)
 ```
+
+### 書き出しZIPの自動検証
+
+タブ②で書き出したZIPファイルが、LINEスタンプの規格(サイズ・容量・透過・余白など)に合っているかを、
+ツール本体とは独立したNode製のスクリプトで検査できます。
+
+```bash
+npm run verify:zip -- path/to/stamps_20261107_1200.zip
+```
+
+`--json`を付けると、機械可読のJSON形式で結果を出力します。NGが1件でもあれば終了コードが1になります
+(CI等での自動チェックにも使えます)。詳細な検査項目は`docs/spec.md`を参照してください。
 
 ## ビルドと公開(GitHub Pages)
 
@@ -119,8 +136,9 @@ npm run format      # Prettierでフォーマット
 
 ```
 wanwan-Linestamp/
-├── docs/            # 仕様書・設計ドキュメント(spec / line-spec / prompt-template / architecture / decisions / backlog)
+├── docs/            # 仕様書・設計ドキュメント(spec / line-spec / prompt-template / architecture / decisions / backlog / release-checklist)
 ├── public/          # 静的ファイル(favicon等)
+├── scripts/         # ツール本体から独立したNode製スクリプト(verify-zip.mjs等)
 ├── samples/         # 動作確認用の実画像サンプル置き場(リポジトリには実ファイルを含めない)
 ├── src/
 │   ├── main.ts      # エントリポイント
@@ -139,6 +157,9 @@ wanwan-Linestamp/
 本ツールが前提とする規格(最大サイズ370×320px、PNG透過、24枚セット等)は `docs/line-spec.md` に
 まとめています。**実際に申請する前に、必ず [LINE Creators Market](https://creator.line.me/) 公式の
 最新ガイドラインを確認してください。** 規格は変更される場合があります。
+
+提出前には [`docs/release-checklist.md`](docs/release-checklist.md) の最終チェックリストも
+あわせてご利用ください。
 
 ## 注意事項
 

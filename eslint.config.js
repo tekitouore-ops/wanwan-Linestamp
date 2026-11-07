@@ -16,4 +16,18 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // scripts/配下はNode CLIスクリプト(追加修正指示書 第7弾 項目25)。
+    // ブラウザ向けのsrc/とは異なりNodeのグローバルを使うため、ここだけ個別に許可する
+    // (新しい依存パッケージ〈globals等〉を追加しないよう、リテラルで最小限だけ列挙する)。
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+        URL: 'readonly',
+      },
+    },
+  },
 );

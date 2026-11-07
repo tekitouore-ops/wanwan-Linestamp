@@ -13,7 +13,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "sync:line-spec": "node scripts/sync-line-spec.mjs",
+    "verify:zip": "npm run sync:line-spec && node scripts/verify-zip.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.2"
